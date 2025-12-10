@@ -1,20 +1,61 @@
 import React from 'react'
 
-function ClientCards({ clients, onSelect }) {
+const statusClass = (status) => {
+  const value = (status || '').toString().toLowerCase()
+  if (value.includes('akt')) return 'dot dot-green'
+  if (value.includes('szun')) return 'dot dot-yellow'
+  if (value.includes('meg')) return 'dot dot-red'
+  return 'dot dot-gray'
+}
+
+function ClientCards({ clients, onSelect, ticketCounts = {}, onTicketClick }) {
   return (
-    <div className="card cards-card">
-      <div className="list-header">
-        <h2>Ügyfelek</h2>
+    <div className="panel cards-panel">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Lista</p>
+          <h2>Ügyfelek</h2>
+        </div>
         <span className="pill">{clients.length}</span>
       </div>
-      <div className="card-grid">
+      <div className="client-grid">
         {clients.map((client) => (
-          <button key={client.id} className="client-card" onClick={() => onSelect(client)}>
-            <div className="client-primary">{client.nev || 'Nincs név'}</div>
+          <div
+            key={client.id}
+            role="button"
+            tabIndex={0}
+            className="client-card"
+            onClick={() => onSelect(client)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(client)
+              }
+            }}
+          >
+            <div className="client-header">
+              <span className={statusClass(client.statusz)} aria-hidden="true" />
+              <div className="client-primary">{client.nev || 'Nincs név'}</div>
+              {onTicketClick ? (
+                <button
+                  type="button"
+                  className="ticket-flag"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onTicketClick(client.id)
+                  }}
+                  title="Ticketek megnyitása"
+                >
+                  🎟 {ticketCounts[client.id] || 0}
+                </button>
+              ) : null}
+            </div>
             <div className="client-secondary">{client.adoszam || 'Adószám nincs megadva'}</div>
-          </button>
+          </div>
         ))}
-        {!clients.length ? <div className="empty-grid">Nincs még adat. Adj hozzá egy ügyfelet.</div> : null}
+        {!clients.length ? (
+          <div className="empty-grid">Nincs még adat. Adj hozzá egy ügyfelet.</div>
+        ) : null}
       </div>
     </div>
   )

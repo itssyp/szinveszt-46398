@@ -13,13 +13,18 @@ function formatValue(key, value, fields) {
   return value || '—'
 }
 
-function ClientDetails({ client, onEdit, fields }) {
+function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
   const labels = fields.reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {})
 
   return (
     <div className="details">
       <div className="details-actions">
-        <button type="button" onClick={onEdit}>
+        {onCreateTicket ? (
+          <button type="button" className="btn ghost" onClick={onCreateTicket} title="Új ticket">
+            Új ticket
+          </button>
+        ) : null}
+        <button type="button" className="btn" onClick={onEdit}>
           Szerkesztés
         </button>
       </div>

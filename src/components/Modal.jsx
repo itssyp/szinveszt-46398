@@ -6,8 +6,8 @@ function Modal({ title, onClose, children }) {
       <div className="modal">
         <header className="modal-header">
           <h2>{title}</h2>
-          <button className="ghost" type="button" onClick={onClose} aria-label="Bezárás">
-            ×
+          <button className="btn ghost icon-btn" type="button" onClick={onClose} aria-label="Bezárás">
+            X
           </button>
         </header>
         <div className="modal-body">{children}</div>

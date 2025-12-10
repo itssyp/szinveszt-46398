@@ -99,7 +99,7 @@ function BulkImport({ fields, onImport, importing, variant = 'card' }) {
 
   const inlineView = (
     <div className="inline-import">
-      <label className="upload-trigger">
+      <label className="btn ghost file-trigger">
         <input
           type="file"
           accept=".xlsx,.xls"
@@ -115,11 +115,12 @@ function BulkImport({ fields, onImport, importing, variant = 'card' }) {
   )
 
   const cardView = (
-    <div className="card import-card">
-      <div className="form-header">
+    <div className="panel import-panel">
+      <div className="panel-head">
         <div>
+          <p className="eyebrow">Excel</p>
           <h2>Excel import</h2>
-          <p className="subline">Töltsd fel az ügyfelek adatait .xlsx fájlból.</p>
+          <p className="section-subtitle">Töltsd fel az ügyfelek adatait .xlsx fájlból.</p>
         </div>
         <label className="upload-button">
           <input
@@ -135,8 +136,7 @@ function BulkImport({ fields, onImport, importing, variant = 'card' }) {
       {message ? <p className="import-message">{message}</p> : null}
       {error ? <p className="import-error">Hiba: {error}</p> : null}
       <p className="hint">
-        Fejléceknek használd a mezőneveket (pl. &quot;Név&quot;, &quot;Státusz&quot;,
-        &quot;Telefonszám&quot;). Ismeretlen oszlopokat kihagyok.
+        Fejléceknek használd a mezőneveket (pl. "Név", "Státusz", "Telefonszám"). Ismeretlen oszlopokat kihagyok.
       </p>
     </div>
   )

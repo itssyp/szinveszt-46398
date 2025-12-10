@@ -24,7 +24,7 @@ export const fieldDefinitions = [
     key: 'meghat',
     label: 'Meghatalmazás',
     type: 'select',
-    options: ['Elfogadva', 'Jóváhagyásra vár', 'Levëve', 'Hiányzik'],
+    options: ['Elfogadva', 'Jóváhagyásra vár', 'Levéve', 'Hiányzik'],
   },
   { key: 'kezdesDatuma', label: 'Kezdés dátuma', type: 'date' },
   { key: 'szuletesiIdo', label: 'Születési idő', type: 'date' },
@@ -39,7 +39,7 @@ export const fieldDefinitions = [
     key: 'afa',
     label: 'ÁFA',
     type: 'select',
-    options: ['Alanyi adómentes', 'ÁFÁs'],
+    options: ['Alanyi adómentes', 'ÁFÁS'],
   },
   {
     key: 'koltseghanyad',
@@ -65,7 +65,7 @@ export const fieldDefinitions = [
     key: 'szamlazas',
     label: 'Számlázás',
     type: 'select',
-    options: ['Havi', 'Félévi', 'Évi', 'Egyéb'],
+    options: ['Havi', 'Félévi', 'Éves', 'Egyéb'],
   },
   {
     key: 'tartozas',

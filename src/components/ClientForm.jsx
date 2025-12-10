@@ -13,7 +13,7 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
 
     if (field.type === 'multiselect') {
       return (
-        <label key={field.key} className="field">
+        <label key={field.key} className="form-field">
           <span>{field.label}</span>
           <select
             {...commonProps}
@@ -38,7 +38,7 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
 
     if (field.type === 'select') {
       return (
-        <label key={field.key} className="field">
+        <label key={field.key} className="form-field">
           <span>{field.label}</span>
           <select
             {...commonProps}
@@ -58,7 +58,7 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
 
     if (field.type === 'boolean') {
       return (
-        <label key={field.key} className="field checkbox-field">
+        <label key={field.key} className="form-field checkbox-field">
           <div className="switch">
             <input
               {...commonProps}
@@ -74,7 +74,7 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
     }
 
     return (
-      <label key={field.key} className="field">
+      <label key={field.key} className="form-field">
         <span>{field.label}</span>
         <input
           {...commonProps}
@@ -88,7 +88,7 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
   }
 
   return (
-    <div className="form-card">
+    <div className="form-shell">
       <form onSubmit={onSubmit} className="client-form">
         {fieldGroups.map((group) => (
           <div key={group.title} className="form-section">
@@ -98,11 +98,11 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
             </div>
           </div>
         ))}
-        <div className="actions">
-          <button type="submit" disabled={saving}>
+        <div className="form-actions">
+          <button className="btn" type="submit" disabled={saving}>
             {saving ? 'Mentés...' : editingId ? 'Mentés' : 'Hozzáadás'}
           </button>
-          <button type="button" className="ghost" onClick={onReset} disabled={saving}>
+          <button type="button" className="btn ghost" onClick={onReset} disabled={saving}>
             Mégse
           </button>
         </div>

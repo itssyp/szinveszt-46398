@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { db } from '../firebase'
 import {
   addDoc,
@@ -9,6 +10,7 @@ import {
   query,
   orderBy,
   writeBatch,
+  serverTimestamp,
 } from 'firebase/firestore'
 import ClientForm from '../components/ClientForm'
 import StatusBadge from '../components/StatusBadge'
@@ -16,62 +18,70 @@ import BulkImport from '../components/BulkImport'
 import Modal from '../components/Modal'
 import ClientCards from '../components/ClientCards'
 import ClientDetails from '../components/ClientDetails'
+import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 
-function ClientsPage() {
+function ClientsPage({ currentUser }) {
   const [clients, setClients] = useState([])
   const [formData, setFormData] = useState(emptyClient)
   const [editingId, setEditingId] = useState(null)
-  const [status, setStatus] = useState({ message: 'Kapcsolodas...', ok: false })
+  const [status, setStatus] = useState({ message: 'Kapcsolódás...', ok: false })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [seeding, setSeeding] = useState(false)
   const [showFormModal, setShowFormModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const seededRef = useRef(false)
-  const seedingInProgressRef = useRef(false)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [startYear, setStartYear] = useState('')
+  const [startMonth, setStartMonth] = useState('')
+  const [sortBy, setSortBy] = useState('name')
+  const [ticketCounts, setTicketCounts] = useState({})
+  const [ticketClient, setTicketClient] = useState(null)
+  const [ticketDescription, setTicketDescription] = useState('')
+  const [ticketAssignee, setTicketAssignee] = useState(currentUser || '')
+  const [ticketSaving, setTicketSaving] = useState(false)
+  const [ticketError, setTicketError] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
-    setStatus({ message: 'Kapcsolodas Firestore-hoz...', ok: false })
+    setStatus({ message: 'Kapcsolódás Firestore-hoz...', ok: false })
     const clientsQuery = query(collection(db, 'clients'), orderBy('nev', 'asc'))
     const unsubscribe = onSnapshot(
       clientsQuery,
-      async (snapshot) => {
+      (snapshot) => {
         const rows = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           ...docSnap.data(),
         }))
-
         setClients(rows)
-        setStatus({ message: 'Kapcsolat aktiv · adatok betoltve.', ok: true })
+        setStatus({ message: 'Kapcsolat aktív és adatok betöltve.', ok: true })
         setError('')
-
-        const requiredIds = ['57346717', '58397936', '57877923']
-        const missing = requiredIds.filter(
-          (id) => !rows.some((row) => String(row.torzs) === id || row.id === id)
-        )
-
-        if (!seededRef.current && missing.length && !seedingInProgressRef.current) {
-          seededRef.current = true
-          seedingInProgressRef.current = true
-          try {
-            await seedDefaults(true, missing)
-          } catch (err) {
-            setError(err.message || 'Seed hiba')
-            seededRef.current = false
-          } finally {
-            seedingInProgressRef.current = false
-          }
-        }
       },
       (err) => {
         setError(err.message)
         setStatus({ message: 'Hiba a Firestore kapcsolatban.', ok: false })
       }
     )
+    return () => unsubscribe()
+  }, [])
 
+  useEffect(() => {
+    const ticketsQuery = query(collection(db, 'tickets'))
+    const unsubscribe = onSnapshot(
+      ticketsQuery,
+      (snap) => {
+        const counts = {}
+        snap.docs.forEach((d) => {
+          const { clientId } = d.data()
+          if (clientId) {
+            counts[clientId] = (counts[clientId] || 0) + 1
+          }
+        })
+        setTicketCounts(counts)
+      },
+      (err) => setError(err.message)
+    )
     return () => unsubscribe()
   }, [])
 
@@ -95,20 +105,17 @@ function ClientsPage() {
             typeof current === 'boolean'
               ? current
               : typeof current === 'string'
-                ? ['true', '1', 'active', 'aktiv'].includes(current.toLowerCase())
+                ? ['true', '1', 'active', 'aktiv', 'aktív'].includes(current.toLowerCase())
                 : false
           acc[field.key] = normalized
         } else if (field.type === 'multiselect') {
-          if (Array.isArray(current)) {
-            acc[field.key] = current
-          } else if (typeof current === 'string') {
+          if (Array.isArray(current)) acc[field.key] = current
+          else if (typeof current === 'string')
             acc[field.key] = current
               .split(',')
               .map((v) => v.trim())
               .filter(Boolean)
-          } else {
-            acc[field.key] = []
-          }
+          else acc[field.key] = []
         } else if (field.type === 'date') {
           if (current && typeof current === 'object' && current.toDate) {
             acc[field.key] = current.toDate().toISOString().slice(0, 10)
@@ -133,20 +140,19 @@ function ClientsPage() {
     event.preventDefault()
     setSaving(true)
     setError('')
-
     try {
       if (editingId) {
         const ref = doc(db, 'clients', editingId)
         await updateDoc(ref, formData)
-        setStatus({ message: 'Ugyfel frissitve.', ok: true })
+        setStatus({ message: 'Ügyfél frissítve.', ok: true })
       } else {
         await addDoc(collection(db, 'clients'), formData)
-        setStatus({ message: 'Uj ugyfel rogzitve.', ok: true })
+        setStatus({ message: 'Új ügyfél rögzítve.', ok: true })
       }
       resetForm()
     } catch (err) {
-      setError(err.message || 'Mentesi hiba')
-      setStatus({ message: 'Mentes sikertelen.', ok: false })
+      setError(err.message || 'Mentési hiba')
+      setStatus({ message: 'Mentés sikertelen.', ok: false })
     } finally {
       setSaving(false)
     }
@@ -156,12 +162,10 @@ function ClientsPage() {
     if (!records.length) return
     setImporting(true)
     setError('')
-    setStatus({ message: 'Importalas folyamatban...', ok: false })
-
+    setStatus({ message: 'Importálás folyamatban...', ok: false })
     try {
       const coll = collection(db, 'clients')
       const chunkSize = 450
-
       for (let i = 0; i < records.length; i += chunkSize) {
         const batch = writeBatch(db)
         const slice = records.slice(i, i + chunkSize)
@@ -171,8 +175,7 @@ function ClientsPage() {
         })
         await batch.commit()
       }
-
-      setStatus({ message: `Import sikeres · ${records.length} sor hozzaadva.`, ok: true })
+      setStatus({ message: `Import sikeres és ${records.length} sor hozzáadva.`, ok: true })
     } catch (err) {
       setError(err.message || 'Import hiba')
       setStatus({ message: 'Import sikertelen.', ok: false })
@@ -182,208 +185,206 @@ function ClientsPage() {
     }
   }
 
-  const summary = useMemo(() => {
-    if (!clients.length) return 'Nincs rogzitett ugyfel.'
-    return `${clients.length} ugyfel listazva.`
-  }, [clients])
+  const handleOpenTicketModal = (client) => {
+    setTicketClient(client)
+    setTicketDescription('')
+    setTicketError('')
+    setTicketAssignee(currentUser || '')
+  }
 
-  const filteredClients = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    if (!term) return clients
-    return clients.filter((client) => {
-      const name = (client.nev || '').toLowerCase()
-      const tax = (client.adoszam || '').toLowerCase()
-      return name.includes(term) || tax.includes(term)
-    })
-  }, [clients, searchTerm])
-
-  const seedDefaults = async (silent = false, limitToIds = null) => {
-    const toIso = (text) => {
-      if (!text) return ''
-      const cleaned = text.replace(/\s+/g, '').replace(/\.$/, '')
-      if (!cleaned.includes('.')) return cleaned
-      const parts = cleaned.split('.').filter(Boolean)
-      const [y, m, d] = parts
-      if (y && m && d) return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-      return ''
-    }
-
-    const trimNum = (text) => (text ? text.replace(/\s+/g, '') : '')
-
-    let dummy = [
-      {
-        torzs: '57346717',
-        nev: 'Dala Milán',
-        statusz: 'Aktív',
-        nyelv: 'Magyar',
-        munkavegzesJellege: '1341',
-        adoszam: '57346717-1-40',
-        adoazonosito: '8453472866',
-        tajszam: 'hiányzik',
-        kapuseged: true,
-        viki: true,
-        relax: true,
-        meghat: 'Elfogadva',
-        kezdesDatuma: toIso('2021.05.13.'),
-        szuletesiIdo: '',
-        szekhely: '8800 NAGYKANIZSA RÓZSA UTCA 14. D.lh. FS.em. 3.ajtó',
-        adozasiForma: 'KATA',
-        afa: 'Alanyi adómentes',
-        koltseghanyad: '40',
-        ipa: 'Sávos',
-        email: 'mdala227@gmail.com',
-        telefonszam: 'hiányzik',
-        cegSzamlazas: 'SZINVESZT',
-        szamlazas: 'Havi',
-        tartozas: 'Egyéb',
-        tartozasOsszeg2025: trimNum('8 890'),
-        kedvezmenyek: 'nincs',
-        megszunesDatuma: '',
-        szunetKezdete: '',
-      },
-      {
-        torzs: '58397936',
-        nev: 'Juhász Indira Diána',
-        statusz: 'Aktív',
-        nyelv: 'Magyar',
-        munkavegzesJellege: '1342',
-        adoszam: '58397936-1-23',
-        adoazonosito: '8474590248',
-        tajszam: '111909315',
-        kapuseged: true,
-        viki: true,
-        relax: true,
-        meghat: 'Elfogadva',
-        kezdesDatuma: toIso('2022.03.07.'),
-        szuletesiIdo: toIso('1996.12.09'),
-        szekhely: '6200 KISKŐRÖS SEGESVÁRI UTCA 57.',
-        adozasiForma: 'Átalányadó',
-        afa: 'Alanyi adómentes',
-        koltseghanyad: '40',
-        ipa: 'Még nem választott',
-        email: 'juhaszindira@gmail.com',
-        telefonszam: 'hiányzik',
-        cegSzamlazas: 'SZINVESZT',
-        szamlazas: 'Havi',
-        tartozas: '1 havi',
-        tartozasOsszeg2025: trimNum('15 500'),
-        kedvezmenyek: 'nincs',
-        megszunesDatuma: '',
-        szunetKezdete: '',
-      },
-      {
-        torzs: '57877923',
-        nev: 'Gfrerer Miklós',
-        statusz: 'Aktív',
-        nyelv: 'Magyar',
-        munkavegzesJellege: '1342',
-        adoszam: '57877923-1-42',
-        adoazonosito: '8379131177',
-        tajszam: '105972082',
-        kapuseged: true,
-        viki: true,
-        relax: true,
-        meghat: 'Elfogadva',
-        kezdesDatuma: toIso('2022.09.01.'),
-        szuletesiIdo: toIso('1970.10.21'),
-        szekhely: '1163 BUDAPEST KOLOZS KÖZ 3. 2.em. 6.ajtó',
-        adozasiForma: 'Átalányadó',
-        afa: 'Alanyi adómentes',
-        koltseghanyad: '40',
-        ipa: 'Sávos',
-        email: '20g.miki@gmail.com',
-        telefonszam: 'hiányzik',
-        cegSzamlazas: 'SZINVESZT',
-        szamlazas: 'Évi',
-        tartozas: 'Egyéb',
-        tartozasOsszeg2025: [],
-        kedvezmenyek: 'nincs',
-        megszunesDatuma: '',
-        szunetKezdete: '',
-      },
-    ]
-
-    if (Array.isArray(limitToIds) && limitToIds.length) {
-      dummy = dummy.filter((item) => limitToIds.includes(String(item.torzs)))
-    }
-
-    if (!dummy.length) {
-      if (!silent) setSeeding(false)
+  const handleCreateTicket = async () => {
+    if (!ticketClient || !ticketDescription.trim() || !ticketAssignee) {
+      setTicketError('Add meg a leírást és a felelőst.')
       return
     }
-    if (!silent) setSeeding(true)
-    setError('')
-    if (!silent) setStatus({ message: 'Dummy ugyfelek hozzaadasa...', ok: false })
     try {
-      const coll = collection(db, 'clients')
-      const batch = writeBatch(db)
-      dummy.forEach((record) => {
-        const ref = doc(coll, record.torzs || undefined)
-        batch.set(ref, record, { merge: true })
+      setTicketSaving(true)
+      setTicketError('')
+      await addDoc(collection(db, 'tickets'), {
+        clientId: ticketClient.id,
+        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
+        description: ticketDescription.trim(),
+        status: 'Nyitott',
+        createdBy: currentUser || 'Ismeretlen',
+        assignedTo: ticketAssignee,
+        resolved: false,
+        createdAt: serverTimestamp(),
+        comments: [],
       })
-      await batch.commit()
-      setStatus({ message: `Dummy ugyfelek hozzaadva (${dummy.length}).`, ok: true })
+      setTicketClient(null)
+      setTicketDescription('')
+      setStatus({ message: 'Ticket létrehozva.', ok: true })
     } catch (err) {
-      setError(err.message || 'Nem sikerult a seed.')
-      setStatus({ message: 'Seed sikertelen.', ok: false })
-      if (!silent) throw err
+      setTicketError(err.message || 'Ticket létrehozása sikertelen')
+      setStatus({ message: 'Hiba ticket létrehozásakor.', ok: false })
     } finally {
-      if (!silent) setSeeding(false)
+      setTicketSaving(false)
     }
   }
 
+  const parseStartDate = (client) => {
+    const raw = client.kezdesDatuma
+    if (raw && typeof raw === 'object' && raw.toDate) return raw.toDate()
+    if (raw instanceof Date) return raw
+    if (typeof raw === 'string' && raw) return new Date(raw)
+    return null
+  }
+
+  const filteredClients = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    return clients
+      .filter((client) => {
+        if (term) {
+          const name = (client.nev || '').toLowerCase()
+          const tax = (client.adoszam || '').toLowerCase()
+          if (!name.includes(term) && !tax.includes(term)) return false
+        }
+        if (statusFilter && (client.statusz || '').toLowerCase() !== statusFilter.toLowerCase()) {
+          return false
+        }
+        const start = parseStartDate(client)
+        if (startYear && (!start || start.getFullYear().toString() !== startYear)) {
+          return false
+        }
+        if (startMonth) {
+          const monthVal = start ? String(start.getMonth() + 1).padStart(2, '0') : ''
+          if (monthVal !== startMonth) return false
+        }
+        return true
+      })
+      .sort((a, b) => {
+        if (sortBy === 'start-desc' || sortBy === 'start-asc') {
+          const dateA = parseStartDate(a)?.getTime() || 0
+          const dateB = parseStartDate(b)?.getTime() || 0
+          return sortBy === 'start-desc' ? dateB - dateA : dateA - dateB
+        }
+        const nameA = (a.nev || '').toLowerCase()
+        const nameB = (b.nev || '').toLowerCase()
+        return nameA.localeCompare(nameB, 'hu')
+      })
+  }, [clients, searchTerm, statusFilter, startYear, startMonth, sortBy])
+
+  const availableYears = useMemo(() => {
+    const years = new Set()
+    clients.forEach((c) => {
+      const date = parseStartDate(c)
+      if (date) years.add(date.getFullYear().toString())
+    })
+    return Array.from(years).sort((a, b) => b.localeCompare(a))
+  }, [clients])
+
   return (
-    <main className="app">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">Ugyfel torzsadatok</p>
-          <h1>Firestore ugyfelkezelo</h1>
-          <p className="subline">{summary}</p>
-        </div>
-        <div className="header-actions">
-          <div className="search">
-            <input
-              type="search"
-              placeholder="Kereses nev vagy adoszam alapjan..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+    <main className="page-container">
+      <header className="section-header">
+        <div className="section-header__top">
+          <div>
+            <p className="eyebrow">Ügyfél törzsadatok</p>
+            <h1 className="section-title">Szinveszt ügyfélkezelő</h1>
+            <p className="section-subtitle">Keresés, importálás, szerkesztés egy helyen.</p>
           </div>
-          <BulkImport
-            fields={fieldDefinitions}
-            onImport={handleBulkImport}
-            importing={importing}
-            variant="inline"
-          />
-          <button type="button" onClick={() => setShowFormModal(true)}>
-            Uj ugyfel
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={async () => {
-              try {
-                await seedDefaults(false, null)
-              } catch {
-                // handled in seedDefaults
-              }
-            }}
-            disabled={seeding}
-          >
-            {seeding ? 'Feltoltes...' : 'Dummy ugyfelek'}
-          </button>
+          <div className="section-header__actions">
+            <BulkImport
+              fields={fieldDefinitions}
+              onImport={handleBulkImport}
+              importing={importing}
+              variant="inline"
+            />
+            <button className="btn" type="button" onClick={() => setShowFormModal(true)}>
+              Új ügyfél
+            </button>
+          </div>
+        </div>
+        <div className="metric-bar">
+          <div className="metric-card">
+            <span className="metric-label">Összes ügyfél</span>
+            <span className="metric-value">{clients.length}</span>
+          </div>
+          <div className="metric-card">
+            <span className="metric-label">Szűrt lista</span>
+            <span className="metric-value">{filteredClients.length}</span>
+          </div>
           <StatusBadge ok={status.ok} message={status.message} />
         </div>
       </header>
 
-      {error ? <div className="banner error">Hiba: {error}</div> : null}
+      {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
-      <section className="layout">
-        <ClientCards clients={filteredClients} onSelect={setSelectedClient} />
+      <div className="panel filter-panel">
+        <div className="input-shell search-field wide-search">
+          <input
+            type="search"
+            placeholder="Keresés név vagy adószám alapján..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="filter-bar">
+          <label className="filter-control">
+            <span>Státusz</span>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">Mind</option>
+              <option value="Aktív">Aktív</option>
+              <option value="Szünetel">Szünetel</option>
+              <option value="Megszűnt">Megszűnt</option>
+            </select>
+          </label>
+          <label className="filter-control">
+            <span>Kezdés éve</span>
+            <select value={startYear} onChange={(e) => setStartYear(e.target.value)}>
+              <option value="">Mind</option>
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-control">
+            <span>Kezdés hónapja</span>
+            <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)}>
+              <option value="">Mind</option>
+              {[
+                '01',
+                '02',
+                '03',
+                '04',
+                '05',
+                '06',
+                '07',
+                '08',
+                '09',
+                '10',
+                '11',
+                '12',
+              ].map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-control">
+            <span>Rendezés</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <option value="name">Név (A-Z)</option>
+              <option value="start-desc">Kezdés dátuma (legújabb)</option>
+              <option value="start-asc">Kezdés dátuma (legrégebbi)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <section className="content-grid">
+        <ClientCards
+          clients={filteredClients}
+          onSelect={setSelectedClient}
+          ticketCounts={ticketCounts}
+          onTicketClick={(clientId) => navigate('/tickets', { state: { clientId } })}
+        />
       </section>
 
       {showFormModal ? (
-        <Modal onClose={resetForm} title={editingId ? 'Ugyfel szerkesztese' : 'Uj ugyfel'}>
+        <Modal onClose={resetForm} title={editingId ? 'Ügyfél szerkesztése' : 'Új ügyfél'}>
           <ClientForm
             fields={fieldDefinitions}
             formData={formData}
@@ -397,13 +398,29 @@ function ClientsPage() {
       ) : null}
 
       {selectedClient ? (
-        <Modal onClose={() => setSelectedClient(null)} title={selectedClient.nev || 'Ugyfel reszletek'}>
+        <Modal onClose={() => setSelectedClient(null)} title={selectedClient.nev || 'Ügyfél részletek'}>
           <ClientDetails
             client={selectedClient}
             onEdit={() => handleEdit(selectedClient)}
             fields={fieldDefinitions}
+            onCreateTicket={() => handleOpenTicketModal(selectedClient)}
           />
         </Modal>
+      ) : null}
+
+      {ticketClient ? (
+        <TicketCreateModal
+          client={ticketClient}
+          description={ticketDescription}
+          onChangeDescription={setTicketDescription}
+          assignedTo={ticketAssignee}
+          onChangeAssignedTo={setTicketAssignee}
+          currentUser={currentUser}
+          saving={ticketSaving}
+          error={ticketError}
+          onCancel={() => setTicketClient(null)}
+          onSubmit={handleCreateTicket}
+        />
       ) : null}
     </main>
   )

@@ -2,7 +2,7 @@ import React from 'react'
 
 function StatusBadge({ ok, message }) {
   return (
-    <div className="status" data-ok={String(ok)}>
+    <div className="status-pill" data-ok={String(ok)}>
       {message}
     </div>
   )
