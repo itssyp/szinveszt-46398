@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { doc, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore'
+import { doc, updateDoc, arrayUnion, Timestamp, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+
+const ASSIGNEES = ['Szindi', 'Fanni', 'Szilveszter']
 
 function TicketModal({ ticket, onClose, currentUser }) {
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [localTicket, setLocalTicket] = useState(ticket)
+  const [updatingAssignee, setUpdatingAssignee] = useState(false)
 
   useEffect(() => {
     setLocalTicket(ticket)
@@ -25,6 +28,30 @@ function TicketModal({ ticket, onClose, currentUser }) {
     }
   }
 
+  const updateAssignee = async (value) => {
+    try {
+      setUpdatingAssignee(true)
+      setLocalTicket((prev) => ({ ...prev, assignedTo: value }))
+      await updateDoc(doc(db, 'tickets', ticket.id), { assignedTo: value })
+    } catch (err) {
+      setError(err.message || 'Nem sikerült frissíteni a felelőst')
+    } finally {
+      setUpdatingAssignee(false)
+    }
+  }
+
+  const deleteTicket = async () => {
+    try {
+      setSaving(true)
+      await deleteDoc(doc(db, 'tickets', ticket.id))
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Nem sikerült törölni')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const addComment = async (e) => {
     e.preventDefault()
     if (!comment.trim()) return
@@ -37,13 +64,6 @@ function TicketModal({ ticket, onClose, currentUser }) {
           author: currentUser || 'Ismeretlen',
         }),
       })
-      setLocalTicket((prev) => ({
-        ...prev,
-        comments: [
-          ...(prev.comments || []),
-          { text: comment.trim(), createdAt: Timestamp.now(), author: currentUser || 'Ismeretlen' },
-        ],
-      }))
       setComment('')
     } catch (err) {
       setError(err.message || 'Nem sikerült menteni a megjegyzést')
@@ -57,37 +77,63 @@ function TicketModal({ ticket, onClose, currentUser }) {
       ? localTicket.createdAt.toDate().toLocaleString()
       : 'Nincs dátum'
 
+  const statusLabel = localTicket.resolved ? 'Megoldva' : 'Nyitott'
+  const assignee = localTicket.assignedTo || 'Nincs megadva'
+  const creator = localTicket.createdBy || 'Ismeretlen'
+
   return (
     <div className="details">
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
       <div className="details-section">
-        <h3>Ticket</h3>
+        <div className="details-header">
+          <h3>Ticket</h3>
+          <div className="details-actions inline">
+            <div className="spacer" />
+            <button className="btn ghost danger" type="button" onClick={deleteTicket} disabled={saving}>
+              Törlés
+            </button>
+          </div>
+        </div>
+        <div className="ticket-meta-row">
+          <button
+            type="button"
+            className={`meta-chip fill ${localTicket.resolved ? 'meta-success' : 'meta-warn'}`}
+            onClick={toggleResolved}
+            disabled={saving}
+          >
+            {statusLabel}
+          </button>
+          <button
+            type="button"
+            className="meta-chip fill"
+            onClick={() => updateAssignee('')}
+            disabled={updatingAssignee}
+          >
+            Ügyfél: {localTicket.clientName || 'Ismeretlen ügyfél'}
+          </button>
+          {ASSIGNEES.map((u) => {
+            const active = (localTicket.assignedTo || '').toLowerCase() === u.toLowerCase()
+            return (
+              <button
+                key={u}
+                type="button"
+                className={`meta-chip fill assignee-chip ${active ? 'active' : ''}`}
+                onClick={() => updateAssignee(u)}
+                disabled={updatingAssignee}
+              >
+                Felelős: {u}
+              </button>
+            )
+          })}
+          <span className="meta-chip fill muted-chip">{created}</span>
+        </div>
         <div className="details-grid">
           <div className="details-item">
-            <span className="details-label">Ügyfél</span>
-            <span className="details-value">{localTicket.clientName || 'Ismeretlen ügyfél'}</span>
-          </div>
-          <div className="details-item">
-            <span className="details-label">Állapot</span>
-            <span className="details-value">{localTicket.resolved ? 'Megoldva' : 'Nyitott'}</span>
-          </div>
-          <div className="details-item">
-            <span className="details-label">Létrehozva</span>
-            <span className="details-value">{created}</span>
-          </div>
-          <div className="details-item">
             <span className="details-label">Létrehozta</span>
-            <span className="details-value">{localTicket.createdBy || 'Ismeretlen'}</span>
-          </div>
-          <div className="details-item">
-            <span className="details-label">Felelős</span>
-            <span className="details-value">{localTicket.assignedTo || 'Nincs megadva'}</span>
+            <span className="details-value">{creator}</span>
           </div>
         </div>
         <p className="details-value">{localTicket.description || 'Nincs leírás'}</p>
-        <button className="btn" type="button" onClick={toggleResolved} disabled={saving}>
-          {localTicket.resolved ? 'Jelölés nyitottra' : 'Jelölés megoldottra'}
-        </button>
       </div>
 
       <div className="details-section">
@@ -108,21 +154,24 @@ function TicketModal({ ticket, onClose, currentUser }) {
             </button>
           </div>
         </form>
-        <div className="ticket-list">
+        <div className="chat-list">
           {localTicket.comments?.map((c, idx) => (
-            <div key={idx} className="ticket-row">
-              <div className="ticket-meta">
-                <span>
+            <div
+              key={idx}
+              className={`chat-row ${c.author === currentUser ? 'chat-own' : 'chat-other'}`}
+            >
+              <div className="chat-meta">
+                <span className="chat-author">{c.author || 'Ismeretlen'}</span>
+                <span className="chat-time">
                   {c.createdAt?.toDate
                     ? c.createdAt.toDate().toLocaleString()
                     : 'Nincs dátum'}
                 </span>
-                {c.author ? <span className="muted">Írta: {c.author}</span> : null}
               </div>
-              <div className="ticket-desc">{c.text}</div>
+              <div className="chat-bubble">{c.text}</div>
             </div>
           ))}
-          {!ticket.comments?.length ? <p className="muted">Nincsenek megjegyzések.</p> : null}
+          {!localTicket.comments?.length ? <p className="muted">Nincsenek megjegyzések.</p> : null}
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ function TicketsPage({ currentUser }) {
   const [selectedTicket, setSelectedTicket] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
 
   useEffect(() => {
     const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'))
@@ -38,20 +39,27 @@ function TicketsPage({ currentUser }) {
 
   const filteredTickets = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    if (!term) return tickets
-    return tickets
-      .filter((t) => {
-        const name = (t.clientName || '').toLowerCase()
-        const desc = (t.description || '').toLowerCase()
-        const status = t.resolved ? 'megoldva' : 'nyitott'
-        const assignee = (t.assignedTo || '').toLowerCase()
-        const matchesSearch = name.includes(term) || desc.includes(term) || status.includes(term)
-        const matchesAssignee = assigneeFilter
-          ? assignee === assigneeFilter.toLowerCase()
-          : true
-        return matchesSearch && matchesAssignee
-      })
-  }, [tickets, searchTerm, assigneeFilter])
+    return tickets.filter((t) => {
+      const name = (t.clientName || '').toLowerCase()
+      const desc = (t.description || '').toLowerCase()
+      const statusText = t.resolved ? 'megoldva' : 'nyitott'
+      const assignee = (t.assignedTo || '').toLowerCase()
+
+      const matchesSearch =
+        !term || name.includes(term) || desc.includes(term) || statusText.includes(term)
+      const matchesAssignee = assigneeFilter
+        ? assignee === assigneeFilter.toLowerCase()
+        : true
+      const matchesStatus =
+        statusFilter === ''
+          ? true
+          : statusFilter === 'open'
+            ? !t.resolved
+            : t.resolved
+
+      return matchesSearch && matchesAssignee && matchesStatus
+    })
+  }, [tickets, searchTerm, assigneeFilter, statusFilter])
 
   return (
     <main className="page-container">
@@ -94,6 +102,14 @@ function TicketsPage({ currentUser }) {
                   ))}
                 </select>
               </label>
+              <label className="filter-control">
+                <span>Állapot</span>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">Mind</option>
+                  <option value="open">Nyitott</option>
+                  <option value="closed">Megoldva</option>
+                </select>
+              </label>
               <span className="pill">{filteredTickets.length}</span>
             </div>
           </div>
@@ -101,7 +117,7 @@ function TicketsPage({ currentUser }) {
             {filteredTickets.map((t) => (
               <div
                 key={t.id}
-                className="ticket-row clickable"
+                className={`ticket-row clickable ${t.assignedTo ? `assignee-${t.assignedTo.toLowerCase()}` : ''}`}
                 onClick={() => setSelectedTicket(t)}
               >
                 <div className="ticket-head">
