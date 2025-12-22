@@ -36,6 +36,7 @@ function ClientsPage({ currentUser }) {
   const [startYear, setStartYear] = useState('')
   const [startMonth, setStartMonth] = useState('')
   const [sortBy, setSortBy] = useState('name')
+  const [viewMode, setViewMode] = useState('cards')
   const [ticketCounts, setTicketCounts] = useState({})
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
@@ -230,6 +231,12 @@ function ClientsPage({ currentUser }) {
     return null
   }
 
+  const formatStartDate = (client) => {
+    const date = parseStartDate(client)
+    if (!date) return '-'
+    return date.toLocaleDateString('hu-HU')
+  }
+
   const filteredClients = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     return clients
@@ -309,27 +316,28 @@ function ClientsPage({ currentUser }) {
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
+      
       <div className="panel filter-panel">
         <div className="input-shell search-field wide-search">
           <input
             type="search"
-            placeholder="Keresés név vagy adószám alapján..."
+            placeholder="Kereses nev vagy adoszam alapjan..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="filter-bar">
           <label className="filter-control">
-            <span>Státusz</span>
+            <span>Statusz</span>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Mind</option>
-              <option value="Aktív">Aktív</option>
-              <option value="Szünetel">Szünetel</option>
-              <option value="Megszűnt">Megszűnt</option>
+              <option value="Aktiv">Aktiv</option>
+              <option value="Szunetel">Szunetel</option>
+              <option value="Megszunt">Megszunt</option>
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdés éve</span>
+            <span>Kezdes eve</span>
             <select value={startYear} onChange={(e) => setStartYear(e.target.value)}>
               <option value="">Mind</option>
               {availableYears.map((year) => (
@@ -340,23 +348,10 @@ function ClientsPage({ currentUser }) {
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdés hónapja</span>
+            <span>Kezdes honapja</span>
             <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)}>
               <option value="">Mind</option>
-              {[
-                '01',
-                '02',
-                '03',
-                '04',
-                '05',
-                '06',
-                '07',
-                '08',
-                '09',
-                '10',
-                '11',
-                '12',
-              ].map((m) => (
+              {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
@@ -364,24 +359,71 @@ function ClientsPage({ currentUser }) {
             </select>
           </label>
           <label className="filter-control">
-            <span>Rendezés</span>
+            <span>Rendezes</span>
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="name">Név (A-Z)</option>
-              <option value="start-desc">Kezdés dátuma (legújabb)</option>
-              <option value="start-asc">Kezdés dátuma (legrégebbi)</option>
+              <option value="name">Nev (A-Z)</option>
+              <option value="start-desc">Kezdes datuma (legujabb)</option>
+              <option value="start-asc">Kezdes datuma (legregebbi)</option>
             </select>
           </label>
+          <div className="view-toggle">
+            <button
+              type="button"
+              className={`pill ${viewMode === 'cards' ? 'pill-active' : ''}`}
+              onClick={() => setViewMode('cards')}
+            >
+              Kartya nezet
+            </button>
+            <button
+              type="button"
+              className={`pill ${viewMode === 'list' ? 'pill-active' : ''}`}
+              onClick={() => setViewMode('list')}
+            >
+              Lista nezet
+            </button>
+          </div>
         </div>
       </div>
 
-      <section className="content-grid">
-        <ClientCards
-          clients={filteredClients}
-          onSelect={setSelectedClient}
-          ticketCounts={ticketCounts}
-          onTicketClick={(clientId) => navigate('/tickets', { state: { clientId } })}
-        />
-      </section>
+      {viewMode === 'cards' ? (
+        <section className="content-grid">
+          <ClientCards
+            clients={filteredClients}
+            onSelect={setSelectedClient}
+            ticketCounts={ticketCounts}
+            onTicketClick={(clientId) => {
+              const clientName = clients.find((c) => c.id === clientId)?.nev || ''
+              const params = new URLSearchParams()
+              params.set('clientId', clientId)
+              if (clientName) params.set('clientName', clientName)
+              navigate(`/tickets?${params.toString()}`)
+            }}
+          />
+        </section>
+      ) : (
+        <section className="client-list">
+          <div className="client-list__header">
+            <span>Nev</span>
+            <span>Adoszam</span>
+            <span>Kezdes datuma</span>
+          </div>
+          {filteredClients.map((client) => (
+            <button
+              key={client.id}
+              type="button"
+              className="client-list__row"
+              onClick={() => setSelectedClient(client)}
+            >
+              <span className="client-list__name">{client.nev || 'N/A'}</span>
+              <span className="client-list__tax">{client.adoszam || '-'}</span>
+              <span className="client-list__date">{formatStartDate(client)}</span>
+            </button>
+          ))}
+          {!filteredClients.length ? (
+            <div className="client-list__empty">Nincs megjelenitheto ugyfel.</div>
+          ) : null}
+        </section>
+      )}
 
       {showFormModal ? (
         <Modal onClose={resetForm} title={editingId ? 'Ügyfél szerkesztése' : 'Új ügyfél'}>

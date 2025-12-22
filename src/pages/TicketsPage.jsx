@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { db } from '../firebase'
 import Modal from '../components/Modal'
@@ -11,6 +12,8 @@ function TicketsPage({ currentUser }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [clientFilter, setClientFilter] = useState({ id: '', name: '' })
+  const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
     const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'))
@@ -37,6 +40,16 @@ function TicketsPage({ currentUser }) {
     }
   }, [tickets]) // keep modal data live
 
+  useEffect(() => {
+    const clientId = searchParams.get('clientId') || ''
+    const clientName = searchParams.get('clientName') || ''
+    if (clientId) {
+      setClientFilter({ id: clientId, name: clientName })
+    } else {
+      setClientFilter({ id: '', name: '' })
+    }
+  }, [searchParams])
+
   const filteredTickets = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     return tickets.filter((t) => {
@@ -56,10 +69,13 @@ function TicketsPage({ currentUser }) {
           : statusFilter === 'open'
             ? !t.resolved
             : t.resolved
+      const matchesClient = clientFilter.id
+        ? String(t.clientId || '') === String(clientFilter.id)
+        : true
 
-      return matchesSearch && matchesAssignee && matchesStatus
+      return matchesSearch && matchesAssignee && matchesStatus && matchesClient
     })
-  }, [tickets, searchTerm, assigneeFilter, statusFilter])
+  }, [tickets, searchTerm, assigneeFilter, statusFilter, clientFilter])
 
   return (
     <main className="page-container">
@@ -83,6 +99,22 @@ function TicketsPage({ currentUser }) {
               <h2>Összes ticket</h2>
             </div>
             <div className="filter-bar">
+              {clientFilter.id ? (
+                <button
+                  type="button"
+                  className="pill pill-clear"
+                  onClick={() => {
+                    setClientFilter({ id: '', name: '' })
+                    const next = new URLSearchParams(searchParams)
+                    next.delete('clientId')
+                    next.delete('clientName')
+                    setSearchParams(next)
+                  }}
+                  title="Ügyfél szűrő törlése"
+                >
+                  {clientFilter.name || 'Kijelölt ügyfél'} ×
+                </button>
+              ) : null}
               <div className="input-shell search-field">
                 <input
                   type="search"

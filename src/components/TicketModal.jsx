@@ -94,46 +94,53 @@ function TicketModal({ ticket, onClose, currentUser }) {
             </button>
           </div>
         </div>
-        <div className="ticket-meta-row">
-          <button
-            type="button"
-            className={`meta-chip fill ${localTicket.resolved ? 'meta-success' : 'meta-warn'}`}
-            onClick={toggleResolved}
-            disabled={saving}
-          >
-            {statusLabel}
-          </button>
-          <button
-            type="button"
-            className="meta-chip fill"
-            onClick={() => updateAssignee('')}
-            disabled={updatingAssignee}
-          >
-            Ügyfél: {localTicket.clientName || 'Ismeretlen ügyfél'}
-          </button>
-          {ASSIGNEES.map((u) => {
-            const active = (localTicket.assignedTo || '').toLowerCase() === u.toLowerCase()
-            return (
-              <button
-                key={u}
-                type="button"
-                className={`meta-chip fill assignee-chip ${active ? 'active' : ''}`}
-                onClick={() => updateAssignee(u)}
-                disabled={updatingAssignee}
-              >
-                Felelős: {u}
-              </button>
-            )
-          })}
-          <span className="meta-chip fill muted-chip">{created}</span>
-        </div>
-        <div className="details-grid">
-          <div className="details-item">
-            <span className="details-label">Létrehozta</span>
-            <span className="details-value">{creator}</span>
+        <div className="ticket-meta-panel">
+          <div className="meta-card wide">
+            <div className="meta-label">Ügyfél</div>
+            <div className="meta-value emphasis">{localTicket.clientName || 'Ismeretlen ügyfél'}</div>
+          </div>
+          <div className="meta-card">
+            <div className="meta-label">Állapot</div>
+            <button
+              type="button"
+              className={`meta-pill status ${localTicket.resolved ? 'status-done' : 'status-open'}`}
+              onClick={toggleResolved}
+              disabled={saving}
+            >
+              {statusLabel}
+            </button>
+          </div>
+          <div className="meta-card">
+            <div className="meta-label">Felelős</div>
+            <select
+              className="meta-select"
+              value={localTicket.assignedTo || ''}
+              onChange={(e) => updateAssignee(e.target.value)}
+              disabled={updatingAssignee || saving}
+            >
+              <option value="">Nincs megadva</option>
+              {ASSIGNEES.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              {assignee !== 'Nincs megadva' && !ASSIGNEES.includes(assignee) ? (
+                <option value={assignee}>{assignee}</option>
+              ) : null}
+            </select>
+          </div>
+          <div className="meta-card">
+            <div className="meta-label">Létrehozta</div>
+            <div className="meta-value">{creator}</div>
+          </div>
+          <div className="meta-card">
+            <div className="meta-label">Létrehozva</div>
+            <div className="meta-value muted">{created}</div>
           </div>
         </div>
-        <p className="details-value">{localTicket.description || 'Nincs leírás'}</p>
+        <p className="details-value ticket-description">
+          {localTicket.description || 'Nincs leírás'}
+        </p>
       </div>
 
       <div className="details-section">

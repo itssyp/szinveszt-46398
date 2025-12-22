@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import './style.css'
 import ClientsPage from './pages/ClientsPage'
 import TicketsPage from './pages/TicketsPage'
+import DebtsPage from './pages/DebtsPage'
 
 const USERS = ['Szindi', 'Fanni', 'Szilveszter']
 
@@ -13,7 +14,7 @@ function App() {
     <BrowserRouter>
       <div className="app-shell">
         <nav className="app-bar">
-          <div className="app-brand">Szinveszt</div>
+          <div className="app-brand">SZINVESZT</div>
           <div className="nav-controls">
             <label className="user-select">
               <span>Belépve:</span>
@@ -36,11 +37,18 @@ function App() {
             >
               Ticketek
             </NavLink>
+            <NavLink
+              to="/debts"
+              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+            >
+              Kintlévőségek
+            </NavLink>
           </div>
         </nav>
         <Routes>
           <Route path="/" element={<ClientsPage currentUser={currentUser} />} />
           <Route path="/tickets" element={<TicketsPage currentUser={currentUser} />} />
+          <Route path="/debts" element={<DebtsPage />} />
         </Routes>
       </div>
     </BrowserRouter>
