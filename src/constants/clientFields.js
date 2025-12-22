@@ -95,6 +95,13 @@ export const fieldDefinitions = [
   { key: 'kedvezmenyek', label: 'Kedvezmények' },
   { key: 'megszunesDatuma', label: 'Megszűnés dátuma', type: 'date' },
   { key: 'szunetKezdete', label: 'Szünet kezdete', type: 'date' },
+  { key: 'navOnlineActive', label: 'NAV 2.0 adat kérés aktív', type: 'boolean' },
+  { key: 'navOnlineUser', label: 'NAV felhasználónév' },
+  { key: 'navOnlinePassword', label: 'NAV jelszó' },
+  { key: 'navOnlineSignerKey', label: 'NAV aláíró kulcs' },
+  { key: 'navOnlineExchangeKey', label: 'NAV csere kulcs' },
+  { key: 'navOnlineStartDate', label: 'NAV kezdő dátum', type: 'date' },
+
 ]
 
 export const fieldGroups = [
@@ -122,6 +129,11 @@ export const fieldGroups = [
     title: 'Egyéb',
     keys: ['kapuseged', 'viki', 'relax', 'meghat'],
   },
+  {
+    title: 'NAV online számla',
+    keys: ['navOnlineActive', 'navOnlineUser', 'navOnlinePassword', 'navOnlineSignerKey', 'navOnlineExchangeKey', 'navOnlineStartDate'],
+  },
+
 ]
 
 export const emptyClient = fieldDefinitions.reduce((acc, field) => {

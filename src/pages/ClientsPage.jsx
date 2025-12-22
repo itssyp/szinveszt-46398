@@ -366,22 +366,16 @@ function ClientsPage({ currentUser }) {
               <option value="start-asc">Kezdes datuma (legregebbi)</option>
             </select>
           </label>
-          <div className="view-toggle">
-            <button
-              type="button"
-              className={`pill ${viewMode === 'cards' ? 'pill-active' : ''}`}
-              onClick={() => setViewMode('cards')}
-            >
-              Kartya nezet
-            </button>
-            <button
-              type="button"
-              className={`pill ${viewMode === 'list' ? 'pill-active' : ''}`}
-              onClick={() => setViewMode('list')}
-            >
-              Lista nezet
-            </button>
-          </div>
+          <button
+            type="button"
+            className="view-toggle-btn"
+            onClick={() => setViewMode(viewMode === 'cards' ? 'list' : 'cards')}
+            title={viewMode === 'cards' ? 'Váltás listára' : 'Váltás kártyákra'}
+          >
+            <span className="view-toggle-icon" aria-hidden="true">
+              {viewMode === 'cards' ? '☰' : '▦'}
+            </span>
+          </button>
         </div>
       </div>
 
