@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+﻿import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { TbArrowLeft } from 'react-icons/tb'
 import { doc, updateDoc } from 'firebase/firestore'
@@ -8,6 +8,7 @@ import ClientForm from '../components/ClientForm'
 import Modal from '../components/Modal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
+import TicketCreateModal from '../components/TicketCreateModal'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
@@ -22,6 +23,11 @@ function ClientDetailsPage() {
   const [showEdit, setShowEdit] = useState(false)
   const [formData, setFormData] = useState(emptyClient)
   const [saving, setSaving] = useState(false)
+  const [ticketClient, setTicketClient] = useState(null)
+  const [ticketDescription, setTicketDescription] = useState('')
+  const [ticketAssignee, setTicketAssignee] = useState('')
+  const [ticketSaving, setTicketSaving] = useState(false)
+  const [ticketError, setTicketError] = useState('')
 
   useEffect(() => {
     if (clientsError) {
@@ -112,7 +118,7 @@ function ClientDetailsPage() {
   return (
     <main className="page-container slide-in-right">
       <header className="section-header">
-        <div className="section-header__top">
+        <div className="section-header__top section-header__top--centered">
           <button
             type="button"
             className="back-arrow"
@@ -121,21 +127,11 @@ function ClientDetailsPage() {
           >
             <TbArrowLeft />
           </button>
-          <div>
+          <div className="section-header__intro">
             <p className="eyebrow">Ügyfél</p>
             <h1 className="section-title">{title}</h1>
-      {taxNumber ? <p className="section-subtitle">Adószám: {taxNumber}</p> : null}
-      {clientId && !taxNumber ? <p className="section-subtitle">ID: {clientId}</p> : null}
-          </div>
-          <div className="section-header__actions">
-            <button className="btn ghost" type="button" onClick={() => navigate(-1)}>
-              Vissza
-            </button>
-            {client ? (
-              <button className="btn" type="button" onClick={startEdit}>
-                Szerkesztés
-              </button>
-            ) : null}
+            {taxNumber ? <p className="section-subtitle">Adószám: {taxNumber}</p> : null}
+            {clientId && !taxNumber ? <p className="section-subtitle">ID: {clientId}</p> : null}
           </div>
         </div>
       </header>
@@ -145,6 +141,24 @@ function ClientDetailsPage() {
 
       {!loading && client ? (
         <section className="panel">
+          <div className="details-actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => {
+                setTicketClient(client)
+                setTicketAssignee('')
+                setTicketDescription('')
+                setTicketError('')
+              }}
+              title="Új ticket"
+            >
+              Új ticket
+            </button>
+            <button type="button" className="btn" onClick={startEdit}>
+              Szerkesztés
+            </button>
+          </div>
           <ClientDetails client={client} onEdit={startEdit} fields={fieldDefinitions} />
         </section>
       ) : null}
@@ -161,6 +175,21 @@ function ClientDetailsPage() {
             saving={saving}
           />
         </Modal>
+      ) : null}
+
+      {ticketClient ? (
+        <TicketCreateModal
+          client={ticketClient}
+          description={ticketDescription}
+          onChangeDescription={setTicketDescription}
+          assignedTo={ticketAssignee}
+          onChangeAssignedTo={setTicketAssignee}
+          currentUser={ticketAssignee || 'Ismeretlen'}
+          saving={ticketSaving}
+          error={ticketError}
+          onCancel={() => setTicketClient(null)}
+          onSubmit={() => setTicketClient(null)}
+        />
       ) : null}
     </main>
   )

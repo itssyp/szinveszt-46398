@@ -43,16 +43,6 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
 
   return (
     <div className="details">
-      <div className="details-actions">
-        {onCreateTicket ? (
-          <button type="button" className="btn ghost" onClick={onCreateTicket} title="Uj ticket">
-            Uj ticket
-          </button>
-        ) : null}
-        <button type="button" className="btn" onClick={onEdit}>
-          Szerkesztes
-        </button>
-      </div>
 
       <div className="details-tabs">
         <button

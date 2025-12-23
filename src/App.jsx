@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+﻿import React, { useEffect, useMemo, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import './style.css'
 import ClientsPage from './pages/ClientsPage'
@@ -53,7 +53,7 @@ function AppShell() {
           </div>
           <div className="nav-links">
             <NavLink to="/clients" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
-              Ugyfelek
+              Ügyfelek
             </NavLink>
             <NavLink
               to="/tickets"
@@ -65,7 +65,7 @@ function AppShell() {
               to="/debts"
               className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
             >
-              Kintlevosegek
+              Kintlévőségek
             </NavLink>
           </div>
           <div className="nav-controls">
@@ -100,5 +100,3 @@ function App() {
 }
 
 export default App
-
-

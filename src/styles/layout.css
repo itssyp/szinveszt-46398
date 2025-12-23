@@ -126,6 +126,28 @@
   flex-wrap: wrap;
 }
 
+.section-header__top--centered {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  padding-left: 44px;
+}
+
+.section-header__intro {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-header__top--centered .back-arrow {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 .section-header__actions,
 .section-actions {
   display: flex;
@@ -251,9 +273,18 @@
   overflow: hidden;
 }
 
+.client-list__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border);
+}
+
 .client-list__header {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr 1.2fr 1fr;
   gap: 8px;
   padding: 12px 16px;
   background: var(--surface-muted);
@@ -265,7 +296,7 @@
 
 .client-list__row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr 1.2fr 1fr;
   gap: 8px;
   padding: 12px 16px;
   text-align: left;
@@ -291,7 +322,8 @@
 }
 
 .client-list__tax,
-.client-list__date {
+.client-list__date,
+.client-list__email {
   color: #4b5563;
   font-weight: 600;
 }

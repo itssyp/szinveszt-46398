@@ -391,32 +391,43 @@ function ClientsPage({ currentUser }) {
           />
         </section>
       ) : (
-        <section className="client-list">
-          <div className="client-list__header">
-            <span>Nev</span>
-            <span>Adoszam</span>
-            <span>Kezdes datuma</span>
+        <section className="content-grid">
+          <div className="client-list">
+            <div className="client-list__toolbar">
+              <div>
+                <p className="eyebrow">Lista</p>
+                <h2>Ügyfelek</h2>
+              </div>
+              <span className="pill">{filteredClients.length}</span>
+            </div>
+            <div className="client-list__header">
+              <span>Név</span>
+              <span>Adószám</span>
+              <span>E-mail</span>
+              <span>Kezdés dátuma</span>
+            </div>
+            {filteredClients.map((client) => (
+              <button
+                key={client.id}
+                type="button"
+                className="client-list__row"
+                onClick={() => {
+                  const tax = client.adoszam
+                  const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
+                  if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
+                  else navigate(`/clients/id/${client.id}`)
+                }}
+              >
+                <span className="client-list__name">{client.nev || 'N/A'}</span>
+                <span className="client-list__tax">{client.adoszam || '-'}</span>
+                <span className="client-list__email">{client.email || '-'}</span>
+                <span className="client-list__date">{formatStartDate(client)}</span>
+              </button>
+            ))}
+            {!filteredClients.length ? (
+              <div className="client-list__empty">Nincs megjeleníthető ügyfél.</div>
+            ) : null}
           </div>
-          {filteredClients.map((client) => (
-            <button
-              key={client.id}
-              type="button"
-              className="client-list__row"
-              onClick={() => {
-                const tax = client.adoszam
-                const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
-                if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
-                else navigate(`/clients/id/${client.id}`)
-              }}
-            >
-              <span className="client-list__name">{client.nev || 'N/A'}</span>
-              <span className="client-list__tax">{client.adoszam || '-'}</span>
-              <span className="client-list__date">{formatStartDate(client)}</span>
-            </button>
-          ))}
-          {!filteredClients.length ? (
-            <div className="client-list__empty">Nincs megjelenitheto ugyfel.</div>
-          ) : null}
         </section>
       )}
 
