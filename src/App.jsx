@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import './style.css'
 import ClientsPage from './pages/ClientsPage'
 import TicketsPage from './pages/TicketsPage'
 import DebtsPage from './pages/DebtsPage'
+import ClientDetailsPage from './pages/ClientDetailsPage'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import Login from './components/Login'
 import { getAliasForEmail } from './constants/userAliases'
@@ -46,10 +47,13 @@ function AppShell() {
     <BrowserRouter>
       <div className="app-shell">
         <nav className="app-bar">
-          <div className="app-brand">SZINVESZT</div>
+          <div className="app-brand">
+            <img src="/szinveszt-logo.png" alt="Szinveszt" className="app-brand__logo" />
+            <span>SZINVESZT</span>
+          </div>
           <div className="nav-links">
-            <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
-              Ügyfelek
+            <NavLink to="/clients" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              Ugyfelek
             </NavLink>
             <NavLink
               to="/tickets"
@@ -61,7 +65,7 @@ function AppShell() {
               to="/debts"
               className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
             >
-              Kintlévőségek
+              Kintlevosegek
             </NavLink>
           </div>
           <div className="nav-controls">
@@ -75,7 +79,10 @@ function AppShell() {
           </div>
         </nav>
         <Routes>
-          <Route path="/" element={<ClientsPage currentUser={displayName} />} />
+          <Route path="/" element={<Navigate to="/clients" replace />} />
+          <Route path="/clients" element={<ClientsPage currentUser={displayName} />} />
+          <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
+          <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
           <Route path="/tickets" element={<TicketsPage currentUser={displayName} />} />
           <Route path="/debts" element={<DebtsPage />} />
         </Routes>
@@ -93,3 +100,5 @@ function App() {
 }
 
 export default App
+
+

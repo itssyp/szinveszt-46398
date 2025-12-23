@@ -12,19 +12,20 @@ import {
   writeBatch,
   serverTimestamp,
 } from 'firebase/firestore'
+import { TbLayoutGrid, TbList } from 'react-icons/tb'
 import ClientForm from '../components/ClientForm'
 import StatusBadge from '../components/StatusBadge'
 import BulkImport from '../components/BulkImport'
 import Modal from '../components/Modal'
 import ClientCards from '../components/ClientCards'
-import ClientDetails from '../components/ClientDetails'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
+import { useClientsCache } from '../hooks/useClientsCache'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
 function ClientsPage({ currentUser }) {
-  const [clients, setClients] = useState([])
+  const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
   const [formData, setFormData] = useState(emptyClient)
   const [editingId, setEditingId] = useState(null)
   const [status, setStatus] = useState({ message: 'Kapcsolódás...', ok: false })
@@ -32,7 +33,6 @@ function ClientsPage({ currentUser }) {
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
   const [showFormModal, setShowFormModal] = useState(false)
-  const [selectedClient, setSelectedClient] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [startYear, setStartYear] = useState('')
@@ -59,26 +59,13 @@ function ClientsPage({ currentUser }) {
   }, [clients])
 
   useEffect(() => {
-    setStatus({ message: 'Kapcsolódás Firestore-hoz...', ok: false })
-    const clientsQuery = query(collection(db, 'clients'), orderBy('nev', 'asc'))
-    const unsubscribe = onSnapshot(
-      clientsQuery,
-      (snapshot) => {
-        const rows = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }))
-        setClients(rows)
-        setStatus({ message: 'Kapcsolat aktív és adatok betöltve.', ok: true })
-        setError('')
-      },
-      (err) => {
-        setError(err.message)
-        setStatus({ message: 'Hiba a Firestore kapcsolatban.', ok: false })
-      }
-    )
-    return () => unsubscribe()
-  }, [])
+    if (clientsError) {
+      setError(clientsError)
+      setStatus({ message: 'Hiba a Firestore kapcsolatban.', ok: false })
+    } else if (!clientsLoading) {
+      setStatus({ message: 'Kapcsolat aktív és adatok betöltve.', ok: true })
+    }
+  }, [clientsError, clientsLoading])
 
   useEffect(() => {
     const ticketsQuery = query(collection(db, 'tickets'))
@@ -107,47 +94,6 @@ function ClientsPage({ currentUser }) {
     setFormData(emptyClient)
     setEditingId(null)
     setShowFormModal(false)
-  }
-
-  const handleEdit = (client) => {
-    setEditingId(client.id)
-    setFormData(
-      fieldDefinitions.reduce((acc, field) => {
-        const current = client[field.key]
-        if (field.type === 'boolean') {
-          const normalized =
-            typeof current === 'boolean'
-              ? current
-              : typeof current === 'string'
-                ? ['true', '1', 'active', 'aktiv', 'aktív'].includes(current.toLowerCase())
-                : false
-          acc[field.key] = normalized
-        } else if (field.type === 'multiselect') {
-          if (Array.isArray(current)) acc[field.key] = current
-          else if (typeof current === 'string')
-            acc[field.key] = current
-              .split(',')
-              .map((v) => v.trim())
-              .filter(Boolean)
-          else acc[field.key] = []
-        } else if (field.type === 'date') {
-          if (current && typeof current === 'object' && current.toDate) {
-            acc[field.key] = current.toDate().toISOString().slice(0, 10)
-          } else if (current instanceof Date) {
-            acc[field.key] = current.toISOString().slice(0, 10)
-          } else if (typeof current === 'string') {
-            acc[field.key] = current.slice(0, 10)
-          } else {
-            acc[field.key] = ''
-          }
-        } else {
-          acc[field.key] = current ?? ''
-        }
-        return acc
-      }, {})
-    )
-    setShowFormModal(true)
-    setSelectedClient(null)
   }
 
   const handleSubmit = async (event) => {
@@ -418,7 +364,7 @@ function ClientsPage({ currentUser }) {
             title={viewMode === 'cards' ? 'Váltás listára' : 'Váltás kártyákra'}
           >
             <span className="view-toggle-icon" aria-hidden="true">
-              {viewMode === 'cards' ? '☰' : '▦'}
+              {viewMode === 'cards' ? <TbList /> : <TbLayoutGrid />}
             </span>
           </button>
         </div>
@@ -428,7 +374,12 @@ function ClientsPage({ currentUser }) {
         <section className="content-grid">
           <ClientCards
             clients={filteredClients}
-            onSelect={setSelectedClient}
+            onSelect={(client) => {
+              const tax = client.adoszam
+              const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
+              if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
+              else navigate(`/clients/id/${client.id}`)
+            }}
             ticketCounts={ticketCounts}
             onTicketClick={(clientId) => {
               const clientName = clients.find((c) => c.id === clientId)?.nev || ''
@@ -451,7 +402,12 @@ function ClientsPage({ currentUser }) {
               key={client.id}
               type="button"
               className="client-list__row"
-              onClick={() => setSelectedClient(client)}
+              onClick={() => {
+                const tax = client.adoszam
+                const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
+                if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
+                else navigate(`/clients/id/${client.id}`)
+              }}
             >
               <span className="client-list__name">{client.nev || 'N/A'}</span>
               <span className="client-list__tax">{client.adoszam || '-'}</span>
@@ -474,17 +430,6 @@ function ClientsPage({ currentUser }) {
             onReset={resetForm}
             editingId={editingId}
             saving={saving}
-          />
-        </Modal>
-      ) : null}
-
-      {selectedClient ? (
-        <Modal onClose={() => setSelectedClient(null)} title={selectedClient.nev || 'Ügyfél részletek'}>
-          <ClientDetails
-            client={selectedClient}
-            onEdit={() => handleEdit(selectedClient)}
-            fields={fieldDefinitions}
-            onCreateTicket={() => handleOpenTicketModal(selectedClient)}
           />
         </Modal>
       ) : null}

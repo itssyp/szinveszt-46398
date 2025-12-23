@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app'
-import { getFirestore, collection, getDocs } from 'firebase/firestore'
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -35,3 +35,15 @@ export function createFirebaseApp() {
 
 export const firebaseApp = createFirebaseApp()
 export const db = getFirestore(firebaseApp)
+
+if (import.meta.env.DEV) {
+  const host = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || '127.0.0.1'
+  const port = Number(import.meta.env.VITE_FIRESTORE_EMULATOR_PORT || 8080)
+  try {
+    connectFirestoreEmulator(db, host, port)
+    // eslint-disable-next-line no-console
+    console.info(`Firestore emulator connected at ${host}:${port}`)
+  } catch (_e) {
+    // ignore emulator connection errors to avoid breaking prod builds
+  }
+}
