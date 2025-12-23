@@ -312,7 +312,7 @@ function ClientsPage({ currentUser }) {
         <div className="input-shell search-field wide-search">
           <input
             type="search"
-            placeholder="Kereses nev vagy adoszam alapjan..."
+            placeholder="Keresés név vagy adószám alapján..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -322,13 +322,13 @@ function ClientsPage({ currentUser }) {
             <span>Statusz</span>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Mind</option>
-              <option value="Aktiv">Aktiv</option>
-              <option value="Szunetel">Szunetel</option>
-              <option value="Megszunt">Megszunt</option>
+              <option value="Aktiv">Akív</option>
+              <option value="Szunetel">Szünetel</option>
+              <option value="Megszunt">Megszünt</option>
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdes eve</span>
+            <span>Kezdés éve</span>
             <select value={startYear} onChange={(e) => setStartYear(e.target.value)}>
               <option value="">Mind</option>
               {availableYears.map((year) => (
@@ -339,7 +339,7 @@ function ClientsPage({ currentUser }) {
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdes honapja</span>
+            <span>Kezdés hónapja</span>
             <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)}>
               <option value="">Mind</option>
               {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m) => (
@@ -350,11 +350,11 @@ function ClientsPage({ currentUser }) {
             </select>
           </label>
           <label className="filter-control">
-            <span>Rendezes</span>
+            <span>Rendezés</span>
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="name">Nev (A-Z)</option>
-              <option value="start-desc">Kezdes datuma (legujabb)</option>
-              <option value="start-asc">Kezdes datuma (legregebbi)</option>
+              <option value="name">Név (A-Z)</option>
+              <option value="start-desc">Kezdés dátuma (legújabb)</option>
+              <option value="start-asc">Kezdés dátuma (legrégebbi)</option>
             </select>
           </label>
           <button

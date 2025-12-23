@@ -22,6 +22,15 @@ function formatValue(key, value, fields) {
   return value || '-'
 }
 
+// Proxy base
+const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'szinveszt-46398'
+const FUNCTIONS_REGION = import.meta.env.VITE_FUNCTIONS_REGION || 'europe-west3'
+const EMULATOR_HOST = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || 'http://127.0.0.1:5001'
+
+const API_BASE = import.meta.env.DEV
+  ? `${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}/navProxy`
+  : `https://${FUNCTIONS_REGION}-${PROJECT_ID}.cloudfunctions.net/navProxy`
+
 function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
   const labels = fields.reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {})
   const [activeTab, setActiveTab] = React.useState('general')
@@ -37,7 +46,7 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
 
   const navTest = useNavOnlineConnectionTest({
     client,
-    endpoint: 'http://127.0.0.1:5001/szinveszt-46398/europe-west3/navProxy/test-connection',
+    endpoint: `${API_BASE}/test-connection`,
   })
 
 

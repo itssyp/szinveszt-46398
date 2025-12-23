@@ -24,7 +24,7 @@ export default function DebtsPage() {
             <p className="eyebrow">Billingo</p>
             <h1 className="section-title">Kintlévőségek</h1>
             <p className="section-subtitle">
-              Aggregálás: documents (expired + outstanding + partially_paid) – partnerenkénti összegzés.
+              Partnerenkénti összegzés
             </p>
           </div>
           <div className="section-actions">
@@ -42,15 +42,6 @@ export default function DebtsPage() {
             <span className="muted">Utolsó frissítés: {lastUpdated.toLocaleString('hu-HU')}</span>
           ) : null}
         </div>
-
-        <div className="section-meta">
-          <span className="pill pill-quiet">expired docs: {progress.docsByStatus.expired}</span>
-          <span className="pill pill-quiet">outstanding docs: {progress.docsByStatus.outstanding}</span>
-          <span className="pill pill-quiet">partially_paid docs: {progress.docsByStatus.partially_paid}</span>
-          <span className="pill pill-quiet">
-            payments: {progress.paymentsDone}/{progress.paymentsTotal}
-          </span>
-        </div>
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
@@ -66,7 +57,7 @@ export default function DebtsPage() {
               <div className="input-shell search-field">
                 <input
                   type="search"
-                  placeholder="Keresés név / email / partner ID alapján..."
+                  placeholder="Keresés"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   disabled={loading}
@@ -94,11 +85,6 @@ export default function DebtsPage() {
                 </div>
               </div>
             ))}
-          </div>
-
-          <div className="muted helper-text">
-            Tipp: Ez a megközelítés sokkal kevesebb Billingo hívás, mint partnerenként dokumentumot kérni.
-            A legdrágább rész a partially_paid → payments lekérések száma.
           </div>
         </div>
       </section>

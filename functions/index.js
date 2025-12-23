@@ -19,9 +19,30 @@ const BILLINGO_BASE_URL = 'https://api.billingo.hu/v3';
 
 const app = express();
 
-// CORS first
-app.use(cors({ origin: true }));
-app.options('*', cors({ origin: true })); // handle preflight
+// CORS first (explicit allowlist so emulator + prod origins both work)
+const ALLOWED_ORIGINS = [
+  'https://szinveszt-46398.web.app',
+  'http://localhost:3000',
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+  } else {
+    res.set('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
+  }
+  res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Vary', 'Origin');
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+  next();
+});
+app.use(cors({ origin: ALLOWED_ORIGINS }));
+app.options('*', cors({ origin: ALLOWED_ORIGINS })); // handle preflight
 
 app.use(express.json());
 
@@ -119,8 +140,8 @@ const NAV_SOFTWARE = {
 
 const navApp = express();
 
-navApp.use(cors({ origin: true }));
-navApp.options('*', cors({ origin: true }));
+navApp.use(cors({ origin: ALLOWED_ORIGINS }));
+navApp.options('*', cors({ origin: ALLOWED_ORIGINS }));
 navApp.use(express.json());
 
 // Keep logs safe (do NOT log secrets)

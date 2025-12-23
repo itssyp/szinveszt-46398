@@ -3,7 +3,7 @@ import { collection, getDocs, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 
 // Debug knobs (kept exportable for quick tuning)
-export const DEBUG_LIMIT_PARTNERS = 50 // set null to show all partners
+export const DEBUG_LIMIT_PARTNERS = null // set null to show all partners
 export const DEBUG_LIMIT_DOCS_PER_STATUS = null // cap downloaded docs per status in dev; null = no cap
 export const CONCURRENCY_PAYMENTS = 6 // payment history calls for partially_paid docs
 
