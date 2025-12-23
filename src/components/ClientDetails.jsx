@@ -87,10 +87,10 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
         ))
       ) : (
         <div className="details-section">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <h3 style={{ margin: 0 }}>NAV online számla</h3>
+          <div className="details-header">
+            <h3>NAV online számla</h3>
 
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="details-actions inline">
               <button
                 type="button"
                 className="btn ghost"
@@ -111,10 +111,10 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
 
           {/* Status banner */}
           {navTest.status === 'success' ? (
-            <div className="details-banner success" style={{ marginTop: 12 }}>
+            <div className="details-banner success">
               ✅ NAV kapcsolat OK
               {navTest.result?.checks ? (
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+                <div className="helper-text">
                   {navTest.result.checks.query ? `Lekérdezés: ${navTest.result.checks.query.ok ? 'OK' : 'HIBA'}` : null}
                   {navTest.result.checks.tokenExchange
                     ? ` • TokenExchange: ${navTest.result.checks.tokenExchange.ok ? 'OK' : 'HIBA'}`
@@ -125,9 +125,9 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
           ) : null}
 
           {navTest.status === 'error' ? (
-            <div className="details-banner error" style={{ marginTop: 12 }}>
+            <div className="details-banner error">
               ❌ NAV teszt sikertelen
-              <div style={{ marginTop: 6, fontSize: 12 }}>
+              <div className="helper-text">
                 {navTest.error?.errorCode ? <div><b>Kód:</b> {navTest.error.errorCode}</div> : null}
                 {navTest.error?.status ? <div><b>HTTP:</b> {navTest.error.status}</div> : null}
                 {navTest.error?.message ? <div><b>Üzenet:</b> {navTest.error.message}</div> : null}
@@ -135,7 +135,7 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
             </div>
           ) : null}
 
-          <div className="details-grid" style={{ marginTop: 12 }}>
+          <div className="details-grid details-grid-spaced">
             {navKeys.map((key) => (
               <div key={key} className="details-item">
                 <span className="details-label">{labels[key] || key}</span>

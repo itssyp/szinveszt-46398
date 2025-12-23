@@ -1,37 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
-import { db } from '../firebase'
+import { orderBy, query } from 'firebase/firestore'
+import useCollectionSubscription from '../hooks/useCollectionSubscription'
 import Modal from '../components/Modal'
 import TicketModal from '../components/TicketModal'
 
 function TicketsPage({ currentUser }) {
-  const [tickets, setTickets] = useState([])
-  const [error, setError] = useState('')
+  const { data: tickets, error } = useCollectionSubscription('tickets', (coll) =>
+    query(coll, orderBy('createdAt', 'desc'))
+  )
   const [selectedTicket, setSelectedTicket] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [clientFilter, setClientFilter] = useState({ id: '', name: '' })
   const [searchParams, setSearchParams] = useSearchParams()
-
-  useEffect(() => {
-    const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'))
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setTickets(
-          snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        )
-        setError('')
-      },
-      (err) => setError(err.message)
-    )
-    return () => unsub()
-  }, [])
 
   useEffect(() => {
     if (selectedTicket) {

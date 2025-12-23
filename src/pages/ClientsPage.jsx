@@ -21,6 +21,8 @@ import ClientDetails from '../components/ClientDetails'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 
+const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
+
 function ClientsPage({ currentUser }) {
   const [clients, setClients] = useState([])
   const [formData, setFormData] = useState(emptyClient)
@@ -44,6 +46,17 @@ function ClientsPage({ currentUser }) {
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
   const navigate = useNavigate()
+
+  const existingIds = useMemo(() => {
+    const set = new Set()
+    clients.forEach((c) => {
+      const tax = normalizeId(c.adoszam)
+      const pid = normalizeId(c.adoazonosito)
+      if (tax) set.add(`tax:${tax}`)
+      if (pid) set.add(`pid:${pid}`)
+    })
+    return set
+  }, [clients])
 
   useEffect(() => {
     setStatus({ message: 'Kapcsolódás Firestore-hoz...', ok: false })
@@ -142,6 +155,17 @@ function ClientsPage({ currentUser }) {
     setSaving(true)
     setError('')
     try {
+      const normalizedTax = normalizeId(formData.adoszam)
+      const normalizedPid = normalizeId(formData.adoazonosito)
+      if (!editingId) {
+        if (normalizedTax && existingIds.has(`tax:${normalizedTax}`)) {
+          throw new Error('Már létezik ügyfél ezzel az adószámmal.')
+        }
+        if (normalizedPid && existingIds.has(`pid:${normalizedPid}`)) {
+          throw new Error('Már létezik ügyfél ezzel az adóazonosítóval.')
+        }
+      }
+
       if (editingId) {
         const ref = doc(db, 'clients', editingId)
         await updateDoc(ref, formData)
@@ -167,16 +191,37 @@ function ClientsPage({ currentUser }) {
     try {
       const coll = collection(db, 'clients')
       const chunkSize = 450
+      let skipped = 0
+      const seen = new Set()
       for (let i = 0; i < records.length; i += chunkSize) {
         const batch = writeBatch(db)
         const slice = records.slice(i, i + chunkSize)
         slice.forEach((record) => {
+          const tax = normalizeId(record.adoszam)
+          const pid = normalizeId(record.adoazonosito)
+          const key = tax ? `tax:${tax}` : pid ? `pid:${pid}` : null
+          const exists =
+            (tax && existingIds.has(`tax:${tax}`)) ||
+            (pid && existingIds.has(`pid:${pid}`)) ||
+            (key && seen.has(key))
+          if (exists) {
+            skipped += 1
+            return
+          }
+          if (key) seen.add(key)
           const ref = doc(coll)
           batch.set(ref, record)
         })
         await batch.commit()
       }
-      setStatus({ message: `Import sikeres és ${records.length} sor hozzáadva.`, ok: true })
+      const added = records.length - skipped
+      setStatus({
+        message: `Import kész: ${added} sor hozzáadva${skipped ? `, ${skipped} duplikátum kihagyva` : ''}.`,
+        ok: true,
+      })
+      if (skipped) {
+        setError('Néhány sor duplikált adószám/adóazonosító miatt kimaradt.')
+      }
     } catch (err) {
       setError(err.message || 'Import hiba')
       setStatus({ message: 'Import sikertelen.', ok: false })
