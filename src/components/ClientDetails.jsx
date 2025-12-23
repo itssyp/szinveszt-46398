@@ -50,6 +50,8 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
   })
 
 
+  const generalGroups = fieldGroups.filter((group) => group.title !== 'NAV online számla')
+
   return (
     <div className="details">
 
@@ -71,7 +73,7 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
       </div>
 
       {activeTab === 'general' ? (
-        fieldGroups.map((group) => (
+        generalGroups.map((group) => (
           <div key={group.title} className="details-section">
             <h3>{group.title}</h3>
             <div className="details-grid">

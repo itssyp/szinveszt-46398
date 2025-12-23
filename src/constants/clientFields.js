@@ -107,7 +107,7 @@ export const fieldDefinitions = [
 export const fieldGroups = [
   {
     title: 'Általános',
-    keys: ['nev', 'statusz', 'nyelv', 'torzs', 'munkavegzesJellege'],
+    keys: ['nev', 'statusz', 'nyelv', 'torzs', 'szuletesiIdo', 'munkavegzesJellege',],
   },
   {
     title: 'Kapcsolat',
@@ -115,15 +115,15 @@ export const fieldGroups = [
   },
   {
     title: 'Adózás',
-    keys: ['adoszam', 'adoazonosito', 'afa', 'adozasiForma', 'ipa', 'koltseghanyad'],
+    keys: ['adoszam', 'adoazonosito', 'afa', 'adozasiForma', 'ipa', 'koltseghanyad', 'kedvezmenyek',],
   },
   {
     title: 'Dátumok',
-    keys: ['kezdesDatuma', 'szuletesiIdo', 'megszunesDatuma', 'szunetKezdete'],
+    keys: ['kezdesDatuma', 'megszunesDatuma', 'szunetKezdete'],
   },
   {
     title: 'Pénzügy',
-    keys: ['tartozas', 'tartozasOsszeg2025', 'kedvezmenyek', 'cegSzamlazas', 'szamlazas'],
+    keys: ['tartozas', 'tartozasOsszeg2025', 'cegSzamlazas', 'szamlazas'],
   },
   {
     title: 'Egyéb',

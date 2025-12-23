@@ -1,14 +1,15 @@
 import React from 'react'
 
-const statusClass = (status) => {
+export const statusClass = (status) => {
   const value = (status || '').toString().toLowerCase()
   if (value.includes('akt')) return 'dot dot-green'
   if (value.includes('szun')) return 'dot dot-yellow'
+  if (value.includes('hold')) return 'dot dot-yellow'
   if (value.includes('meg')) return 'dot dot-red'
-  return 'dot dot-gray'
+  return 'dot dot-yellow'
 }
 
-function ClientCards({ clients, onSelect, ticketCounts = {}, onTicketClick }) {
+function ClientCards({ clients, onSelect }) {
   return (
     <div className="panel cards-panel">
       <div className="panel-head">
@@ -36,19 +37,6 @@ function ClientCards({ clients, onSelect, ticketCounts = {}, onTicketClick }) {
             <div className="client-header">
               <span className={statusClass(client.statusz)} aria-hidden="true" />
               <div className="client-primary">{client.nev || 'Nincs név'}</div>
-              {onTicketClick ? (
-                <button
-                  type="button"
-                  className="ticket-flag"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onTicketClick(client.id)
-                  }}
-                  title="Ticketek megnyitása"
-                >
-                  🎟 {ticketCounts[client.id] || 0}
-                </button>
-              ) : null}
             </div>
             <div className="client-secondary">{client.adoszam || 'Adószám nincs megadva'}</div>
           </div>

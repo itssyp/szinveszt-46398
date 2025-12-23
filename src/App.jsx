@@ -5,6 +5,7 @@ import ClientsPage from './pages/ClientsPage'
 import TicketsPage from './pages/TicketsPage'
 import DebtsPage from './pages/DebtsPage'
 import ClientDetailsPage from './pages/ClientDetailsPage'
+import ClientEditPage from './pages/ClientEditPage'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import Login from './components/Login'
 import { getAliasForEmail } from './constants/userAliases'
@@ -83,6 +84,7 @@ function AppShell() {
           <Route path="/clients" element={<ClientsPage currentUser={displayName} />} />
           <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
           <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
+          <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />
           <Route path="/tickets" element={<TicketsPage currentUser={displayName} />} />
           <Route path="/debts" element={<DebtsPage />} />
         </Routes>

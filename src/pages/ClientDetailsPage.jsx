@@ -1,14 +1,12 @@
-﻿import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { TbArrowLeft } from 'react-icons/tb'
-import { doc, updateDoc } from 'firebase/firestore'
-import { db } from '../firebase'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import ClientDetails from '../components/ClientDetails'
-import ClientForm from '../components/ClientForm'
-import Modal from '../components/Modal'
-import { fieldDefinitions, emptyClient } from '../constants/clientFields'
+import { fieldDefinitions } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import TicketCreateModal from '../components/TicketCreateModal'
+import { db } from '../firebase'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
@@ -20,14 +18,12 @@ function ClientDetailsPage() {
   const [docId, setDocId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showEdit, setShowEdit] = useState(false)
-  const [formData, setFormData] = useState(emptyClient)
-  const [saving, setSaving] = useState(false)
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketAssignee, setTicketAssignee] = useState('')
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
+  const [ticketCount, setTicketCount] = useState(0)
 
   useEffect(() => {
     if (clientsError) {
@@ -55,65 +51,23 @@ function ClientDetailsPage() {
     }
   }, [clients, clientsLoading, clientsError, taxNumber, clientId])
 
-  const startEdit = () => {
-    if (!client) return
-    const data = fieldDefinitions.reduce((acc, field) => {
-      const current = client[field.key]
-      if (field.type === 'boolean') {
-        const normalized =
-          typeof current === 'boolean'
-            ? current
-            : typeof current === 'string'
-              ? ['true', '1', 'active', 'aktiv', 'aktív'].includes(current.toLowerCase())
-              : false
-        acc[field.key] = normalized
-      } else if (field.type === 'multiselect') {
-        if (Array.isArray(current)) acc[field.key] = current
-        else if (typeof current === 'string')
-          acc[field.key] = current
-            .split(',')
-            .map((v) => v.trim())
-            .filter(Boolean)
-        else acc[field.key] = []
-      } else if (field.type === 'date') {
-        if (current && typeof current === 'object' && current.toDate) {
-          acc[field.key] = current.toDate().toISOString().slice(0, 10)
-        } else if (current instanceof Date) {
-          acc[field.key] = current.toISOString().slice(0, 10)
-        } else if (typeof current === 'string') {
-          acc[field.key] = current.slice(0, 10)
-        } else {
-          acc[field.key] = ''
-        }
-      } else {
-        acc[field.key] = current ?? ''
-      }
-      return acc
-    }, {})
-    setFormData(data)
-    setShowEdit(true)
-  }
-
-  const handleChange = (key, value) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const handleSave = async (event) => {
-    event.preventDefault()
-    if (!docId) return
-    setSaving(true)
-    setError('')
-    try {
-      await updateDoc(doc(db, 'clients', docId), formData)
-      setShowEdit(false)
-    } catch (err) {
-      setError(err.message || 'Mentési hiba')
-    } finally {
-      setSaving(false)
-    }
-  }
+  useEffect(() => {
+    if (!docId) return undefined
+    const q = query(collection(db, 'tickets'), where('clientId', '==', docId))
+    const unsub = onSnapshot(
+      q,
+      (snap) => setTicketCount(snap.size),
+      (_err) => setTicketCount(0)
+    )
+    return () => unsub()
+  }, [docId])
 
   const title = useMemo(() => client?.nev || 'Ügyfél', [client])
+
+  const goToEditPage = () => {
+    if (!docId) return
+    navigate(`/clients/id/${docId}/edit`)
+  }
 
   return (
     <main className="page-container slide-in-right">
@@ -146,6 +100,20 @@ function ClientDetailsPage() {
               type="button"
               className="btn ghost"
               onClick={() => {
+                if (!docId) return
+                const params = new URLSearchParams()
+                params.set('clientId', docId)
+                if (client?.nev) params.set('clientName', client.nev)
+                navigate(`/tickets?${params.toString()}`)
+              }}
+              title="Ticketek megnyitása"
+            >
+              Ticketek: {ticketCount}
+            </button>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => {
                 setTicketClient(client)
                 setTicketAssignee('')
                 setTicketDescription('')
@@ -155,26 +123,12 @@ function ClientDetailsPage() {
             >
               Új ticket
             </button>
-            <button type="button" className="btn" onClick={startEdit}>
+            <button type="button" className="btn" onClick={goToEditPage}>
               Szerkesztés
             </button>
           </div>
-          <ClientDetails client={client} onEdit={startEdit} fields={fieldDefinitions} />
+          <ClientDetails client={client} onEdit={goToEditPage} fields={fieldDefinitions} />
         </section>
-      ) : null}
-
-      {showEdit ? (
-        <Modal onClose={() => setShowEdit(false)} title="Ügyfél szerkesztése">
-          <ClientForm
-            fields={fieldDefinitions}
-            formData={formData}
-            onChange={handleChange}
-            onSubmit={handleSave}
-            onReset={() => setShowEdit(false)}
-            editingId={docId}
-            saving={saving}
-          />
-        </Modal>
       ) : null}
 
       {ticketClient ? (

@@ -5,22 +5,20 @@ import {
   addDoc,
   collection,
   doc,
-  onSnapshot,
   updateDoc,
   query,
   orderBy,
-  writeBatch,
   serverTimestamp,
 } from 'firebase/firestore'
 import { TbLayoutGrid, TbList } from 'react-icons/tb'
 import ClientForm from '../components/ClientForm'
 import StatusBadge from '../components/StatusBadge'
-import BulkImport from '../components/BulkImport'
 import Modal from '../components/Modal'
-import ClientCards from '../components/ClientCards'
+import ClientCards, { statusClass } from '../components/ClientCards'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
+import ClientImportWizard from '../components/ClientImportWizard'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
@@ -31,7 +29,6 @@ function ClientsPage({ currentUser }) {
   const [status, setStatus] = useState({ message: 'Kapcsolódás...', ok: false })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [importing, setImporting] = useState(false)
   const [showFormModal, setShowFormModal] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -39,12 +36,12 @@ function ClientsPage({ currentUser }) {
   const [startMonth, setStartMonth] = useState('')
   const [sortBy, setSortBy] = useState('name')
   const [viewMode, setViewMode] = useState('cards')
-  const [ticketCounts, setTicketCounts] = useState({})
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketAssignee, setTicketAssignee] = useState(currentUser || '')
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
+  const [showImportWizard, setShowImportWizard] = useState(false)
   const navigate = useNavigate()
 
   const existingIds = useMemo(() => {
@@ -66,25 +63,6 @@ function ClientsPage({ currentUser }) {
       setStatus({ message: 'Kapcsolat aktív és adatok betöltve.', ok: true })
     }
   }, [clientsError, clientsLoading])
-
-  useEffect(() => {
-    const ticketsQuery = query(collection(db, 'tickets'))
-    const unsubscribe = onSnapshot(
-      ticketsQuery,
-      (snap) => {
-        const counts = {}
-        snap.docs.forEach((d) => {
-          const { clientId } = d.data()
-          if (clientId) {
-            counts[clientId] = (counts[clientId] || 0) + 1
-          }
-        })
-        setTicketCounts(counts)
-      },
-      (err) => setError(err.message)
-    )
-    return () => unsubscribe()
-  }, [])
 
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
@@ -126,54 +104,6 @@ function ClientsPage({ currentUser }) {
       setStatus({ message: 'Mentés sikertelen.', ok: false })
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleBulkImport = async (records) => {
-    if (!records.length) return
-    setImporting(true)
-    setError('')
-    setStatus({ message: 'Importálás folyamatban...', ok: false })
-    try {
-      const coll = collection(db, 'clients')
-      const chunkSize = 450
-      let skipped = 0
-      const seen = new Set()
-      for (let i = 0; i < records.length; i += chunkSize) {
-        const batch = writeBatch(db)
-        const slice = records.slice(i, i + chunkSize)
-        slice.forEach((record) => {
-          const tax = normalizeId(record.adoszam)
-          const pid = normalizeId(record.adoazonosito)
-          const key = tax ? `tax:${tax}` : pid ? `pid:${pid}` : null
-          const exists =
-            (tax && existingIds.has(`tax:${tax}`)) ||
-            (pid && existingIds.has(`pid:${pid}`)) ||
-            (key && seen.has(key))
-          if (exists) {
-            skipped += 1
-            return
-          }
-          if (key) seen.add(key)
-          const ref = doc(coll)
-          batch.set(ref, record)
-        })
-        await batch.commit()
-      }
-      const added = records.length - skipped
-      setStatus({
-        message: `Import kész: ${added} sor hozzáadva${skipped ? `, ${skipped} duplikátum kihagyva` : ''}.`,
-        ok: true,
-      })
-      if (skipped) {
-        setError('Néhány sor duplikált adószám/adóazonosító miatt kimaradt.')
-      }
-    } catch (err) {
-      setError(err.message || 'Import hiba')
-      setStatus({ message: 'Import sikertelen.', ok: false })
-      throw err
-    } finally {
-      setImporting(false)
     }
   }
 
@@ -281,12 +211,9 @@ function ClientsPage({ currentUser }) {
             <p className="section-subtitle">Keresés, importálás, szerkesztés egy helyen.</p>
           </div>
           <div className="section-header__actions">
-            <BulkImport
-              fields={fieldDefinitions}
-              onImport={handleBulkImport}
-              importing={importing}
-              variant="inline"
-            />
+            <button className="btn ghost" type="button" onClick={() => setShowImportWizard(true)}>
+              Excel import (új)
+            </button>
             <button className="btn" type="button" onClick={() => setShowFormModal(true)}>
               Új ügyfél
             </button>
@@ -307,7 +234,6 @@ function ClientsPage({ currentUser }) {
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
-      
       <div className="panel filter-panel">
         <div className="input-shell search-field wide-search">
           <input
@@ -319,12 +245,12 @@ function ClientsPage({ currentUser }) {
         </div>
         <div className="filter-bar">
           <label className="filter-control">
-            <span>Statusz</span>
+            <span>Státusz</span>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Mind</option>
-              <option value="Aktiv">Akív</option>
+              <option value="Aktiv">Aktív</option>
               <option value="Szunetel">Szünetel</option>
-              <option value="Megszunt">Megszünt</option>
+              <option value="Megszunt">Megszűnt</option>
             </select>
           </label>
           <label className="filter-control">
@@ -380,14 +306,6 @@ function ClientsPage({ currentUser }) {
               if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
               else navigate(`/clients/id/${client.id}`)
             }}
-            ticketCounts={ticketCounts}
-            onTicketClick={(clientId) => {
-              const clientName = clients.find((c) => c.id === clientId)?.nev || ''
-              const params = new URLSearchParams()
-              params.set('clientId', clientId)
-              if (clientName) params.set('clientName', clientName)
-              navigate(`/tickets?${params.toString()}`)
-            }}
           />
         </section>
       ) : (
@@ -418,7 +336,9 @@ function ClientsPage({ currentUser }) {
                   else navigate(`/clients/id/${client.id}`)
                 }}
               >
-                <span className="client-list__name">{client.nev || 'N/A'}</span>
+                <span className="client-list__name">
+                  <span className={statusClass(client.statusz)} aria-hidden="true" /> {client.nev || 'N/A'}
+                </span>
                 <span className="client-list__tax">{client.adoszam || '-'}</span>
                 <span className="client-list__email">{client.email || '-'}</span>
                 <span className="client-list__date">{formatStartDate(client)}</span>
@@ -443,6 +363,19 @@ function ClientsPage({ currentUser }) {
             saving={saving}
           />
         </Modal>
+      ) : null}
+
+      {showImportWizard ? (
+        <ClientImportWizard
+          onClose={() => setShowImportWizard(false)}
+          clients={clients}
+          onComplete={(result) =>
+            setStatus({
+              message: `Import kész. Új: ${result.created}, frissített: ${result.updated}, kihagyva: ${result.skipped}.`,
+              ok: true,
+            })
+          }
+        />
       ) : null}
 
       {ticketClient ? (

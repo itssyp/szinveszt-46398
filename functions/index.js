@@ -6,6 +6,7 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const crypto = require('crypto');
+const admin = require('firebase-admin');
 
 const REGION = 'europe-west3';
 setGlobalOptions({ region: REGION });
@@ -22,7 +23,12 @@ const app = express();
 // CORS first (explicit allowlist so emulator + prod origins both work)
 const ALLOWED_ORIGINS = [
   'https://szinveszt-46398.web.app',
+  'http://localhost:5173',
+  'http://localhost:4173',
   'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:4173',
+  'http://127.0.0.1:3000',
 ];
 
 app.use((req, res, next) => {
@@ -33,7 +39,7 @@ app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
   }
   res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Firebase-AppCheck');
   res.set('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
     res.status(204).send('');
@@ -45,6 +51,45 @@ app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.options('*', cors({ origin: ALLOWED_ORIGINS })); // handle preflight
 
 app.use(express.json());
+
+// Initialize Admin SDK once
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+async function requireFirebaseAuthOrAppCheck(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const appCheckToken = req.headers['x-firebase-appcheck'] || null;
+
+    let decodedIdToken = null;
+    let decodedAppCheck = null;
+
+    if (idToken) {
+      decodedIdToken = await admin.auth().verifyIdToken(idToken);
+    }
+
+    if (appCheckToken) {
+      decodedAppCheck = await admin.appCheck().verifyToken(appCheckToken);
+    }
+
+    if (!decodedIdToken && !decodedAppCheck) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    req.user = decodedIdToken || null;
+    req.appCheck = decodedAppCheck || null;
+    next();
+  } catch (err) {
+    console.error('Auth/App Check failed:', err.message);
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+}
+
+// Require Firebase Auth or App Check on every proxy call
+app.use(requireFirebaseAuthOrAppCheck);
 
 // Optional: log what you are actually forwarding
 app.use((req, _res, next) => {
@@ -140,9 +185,15 @@ const NAV_SOFTWARE = {
 
 const navApp = express();
 
-navApp.use(cors({ origin: ALLOWED_ORIGINS }));
+navApp.use(
+  cors({
+    origin: ALLOWED_ORIGINS,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Firebase-AppCheck'],
+  })
+);
 navApp.options('*', cors({ origin: ALLOWED_ORIGINS }));
 navApp.use(express.json());
+navApp.use(requireFirebaseAuthOrAppCheck);
 
 // Keep logs safe (do NOT log secrets)
 navApp.use((req, _res, next) => {

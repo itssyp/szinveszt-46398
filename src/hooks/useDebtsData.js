@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getAuth } from 'firebase/auth'
 import { collection, getDocs, writeBatch } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db, firebaseApp } from '../firebase'
 
 // Debug knobs (kept exportable for quick tuning)
 export const DEBUG_LIMIT_PARTNERS = null // set null to show all partners
@@ -40,13 +41,30 @@ export const formatAmount = (value) => `${Math.round(toNumber(value)).toLocaleSt
 
 const getLastPage = (payload) => Number(payload?.last_page ?? 1) || 1
 
+async function buildAuthHeaders() {
+  const auth = getAuth(firebaseApp)
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('Nincs bejelentkezve')
+  }
+  const idToken = await user.getIdToken()
+  return {
+    Authorization: `Bearer ${idToken}`,
+  }
+}
+
 async function billingFetch(endpoint, params = {}, signal) {
   const url = buildUrl(endpoint)
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') url.searchParams.append(k, v)
   })
 
-  const res = await fetch(url.toString(), { signal })
+  const headers = await buildAuthHeaders()
+
+  const res = await fetch(url.toString(), {
+    signal,
+    headers,
+  })
   const text = await res.text()
   if (!res.ok) throw new Error(text || `Billingo válasz: ${res.status}`)
   return JSON.parse(text)

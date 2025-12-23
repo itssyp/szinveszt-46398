@@ -7,6 +7,7 @@
 export const USER_ALIASES = {
   'barany.szilva@gmail.com': 'Szilveszter',
   'fanni@example.com': 'Fanni',
+  'szindike388@gmail.com' : 'Szindi',
 }
 
 export const getAliasForEmail = (email) => {
