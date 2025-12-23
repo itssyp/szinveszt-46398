@@ -9,6 +9,7 @@ import { db } from '../firebase'
 function useCollectionSubscription(path, buildQuery) {
   const [data, setData] = useState([])
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const collRef = collection(db, path)
@@ -25,14 +26,18 @@ function useCollectionSubscription(path, buildQuery) {
           }))
         )
         setError('')
+        setLoading(false)
       },
-      (err) => setError(err.message || 'Snapshot error')
+      (err) => {
+        setError(err.message || 'Snapshot error')
+        setLoading(false)
+      }
     )
 
     return () => unsub()
   }, [path])
 
-  return { data, error }
+  return { data, error, loading }
 }
 
 export default useCollectionSubscription

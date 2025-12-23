@@ -10,7 +10,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore'
-import { TbLayoutGrid, TbList } from 'react-icons/tb'
+import { TbLayoutGrid, TbList, TbUserPlus, TbUpload } from 'react-icons/tb'
 import ClientForm from '../components/ClientForm'
 import StatusBadge from '../components/StatusBadge'
 import Modal from '../components/Modal'
@@ -19,6 +19,7 @@ import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import ClientImportWizard from '../components/ClientImportWizard'
+import { logClientActivity } from '../utils/clientActivity'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
@@ -122,7 +123,7 @@ function ClientsPage({ currentUser }) {
     try {
       setTicketSaving(true)
       setTicketError('')
-      await addDoc(collection(db, 'tickets'), {
+      const ref = await addDoc(collection(db, 'tickets'), {
         clientId: ticketClient.id,
         clientName: ticketClient.nev || 'Ismeretlen ügyfél',
         description: ticketDescription.trim(),
@@ -132,6 +133,13 @@ function ClientsPage({ currentUser }) {
         resolved: false,
         createdAt: serverTimestamp(),
         comments: [],
+      })
+      await logClientActivity({
+        clientId: ticketClient.id,
+        type: 'ticket_created',
+        message: `Ticket: ${ticketDescription.trim().slice(0, 80)}`,
+        meta: { ticketId: ref.id, assignedTo: ticketAssignee },
+        actor: currentUser || 'Ismeretlen',
       })
       setTicketClient(null)
       setTicketDescription('')
@@ -201,6 +209,61 @@ function ClientsPage({ currentUser }) {
     return Array.from(years).sort((a, b) => b.localeCompare(a))
   }, [clients])
 
+  const renderClientSkeletons = (variant = viewMode) => {
+    const count = variant === 'cards' ? 6 : 6
+    if (variant === 'cards') {
+      return (
+        <div className="client-grid">
+          {Array.from({ length: count }).map((_, idx) => (
+            <div className="client-card skeleton-card" key={idx}>
+              <div className="client-header">
+                <span className="skeleton circle" />
+                <div className="skeleton lg wide" style={{ width: '70%' }} />
+              </div>
+              <div className="skeleton md wide" style={{ width: '60%' }} />
+              <div className="skeleton sm wide" style={{ width: '42%' }} />
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <div className="client-list">
+        <div className="client-list__toolbar">
+          <div>
+            <p className="eyebrow">Lista</p>
+            <h2>Ügyfelek</h2>
+          </div>
+          <span className="pill">{filteredClients.length || '...'}</span>
+        </div>
+        <div className="client-list__header">
+          <span>Név</span>
+          <span>Adószám</span>
+          <span>E-mail</span>
+          <span>Kezdés dátuma</span>
+        </div>
+        {Array.from({ length: count }).map((_, idx) => (
+          <div key={idx} className="client-list__row">
+            <span className="client-list__name">
+              <span className="skeleton circle" />
+              <span className="skeleton md wide" style={{ width: '60%' }} />
+            </span>
+            <span className="client-list__tax">
+              <span className="skeleton sm wide" style={{ width: '70%' }} />
+            </span>
+            <span className="client-list__email">
+              <span className="skeleton sm wide" style={{ width: '80%' }} />
+            </span>
+            <span className="client-list__date">
+              <span className="skeleton sm wide" style={{ width: '50%' }} />
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <main className="page-container">
       <header className="section-header">
@@ -212,10 +275,10 @@ function ClientsPage({ currentUser }) {
           </div>
           <div className="section-header__actions">
             <button className="btn ghost" type="button" onClick={() => setShowImportWizard(true)}>
-              Excel import (új)
+              <TbUpload /> Excel import (új)
             </button>
             <button className="btn" type="button" onClick={() => setShowFormModal(true)}>
-              Új ügyfél
+              <TbUserPlus /> Új ügyfél
             </button>
           </div>
         </div>
@@ -298,56 +361,64 @@ function ClientsPage({ currentUser }) {
 
       {viewMode === 'cards' ? (
         <section className="content-grid">
-          <ClientCards
-            clients={filteredClients}
-            onSelect={(client) => {
-              const tax = client.adoszam
-              const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
-              if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
-              else navigate(`/clients/id/${client.id}`)
-            }}
-          />
+          {clientsLoading && !clients.length ? (
+            renderClientSkeletons('cards')
+          ) : (
+            <ClientCards
+              clients={filteredClients}
+              onSelect={(client) => {
+                const tax = client.adoszam
+                const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
+                if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
+                else navigate(`/clients/id/${client.id}`)
+              }}
+            />
+          )}
         </section>
       ) : (
         <section className="content-grid">
-          <div className="client-list">
-            <div className="client-list__toolbar">
-              <div>
-                <p className="eyebrow">Lista</p>
-                <h2>Ügyfelek</h2>
+          {clientsLoading && !clients.length ? (
+            renderClientSkeletons('list')
+          ) : (
+            <div className="client-list">
+              <div className="client-list__toolbar">
+                <div>
+                  <p className="eyebrow">Lista</p>
+                  <h2>Ügyfelek</h2>
+                </div>
+                <span className="pill">{filteredClients.length}</span>
               </div>
-              <span className="pill">{filteredClients.length}</span>
+              <div className="client-list__header">
+                <span>Név</span>
+                <span>Adószám</span>
+                <span>E-mail</span>
+                <span>Kezdés dátuma</span>
+              </div>
+              {filteredClients.map((client) => (
+                <button
+                  key={client.id}
+                  type="button"
+                  className="client-list__row"
+                  onClick={() => {
+                    const tax = client.adoszam
+                    const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
+                    if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
+                    else navigate(`/clients/id/${client.id}`)
+                  }}
+                >
+                  <span className="client-list__name">
+                    <span className={statusClass(client.statusz)} aria-hidden="true" /> {client.nev || 'N/A'}
+                  </span>
+                  <span className="client-list__tax">{client.adoszam || '-'}</span>
+                  <span className="client-list__email">{client.email || '-'}</span>
+                  <span className="client-list__date">{formatStartDate(client)}</span>
+                </button>
+              ))}
+              {!filteredClients.length ? (
+                <div className="client-list__empty">Nincs megjeleníthető ügyfél.</div>
+              ) : null}
             </div>
-            <div className="client-list__header">
-              <span>Név</span>
-              <span>Adószám</span>
-              <span>E-mail</span>
-              <span>Kezdés dátuma</span>
-            </div>
-            {filteredClients.map((client) => (
-              <button
-                key={client.id}
-                type="button"
-                className="client-list__row"
-                onClick={() => {
-                  const tax = client.adoszam
-                  const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
-                  if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
-                  else navigate(`/clients/id/${client.id}`)
-                }}
-              >
-                <span className="client-list__name">
-                  <span className={statusClass(client.statusz)} aria-hidden="true" /> {client.nev || 'N/A'}
-                </span>
-                <span className="client-list__tax">{client.adoszam || '-'}</span>
-                <span className="client-list__email">{client.email || '-'}</span>
-                <span className="client-list__date">{formatStartDate(client)}</span>
-              </button>
-            ))}
-            {!filteredClients.length ? (
-              <div className="client-list__empty">Nincs megjeleníthető ügyfél.</div>
-            ) : null}
-          </div>
+          )}
         </section>
       )}
 

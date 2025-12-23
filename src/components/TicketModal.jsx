@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { doc, updateDoc, arrayUnion, Timestamp, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { logClientActivity } from '../utils/clientActivity'
 
 const ASSIGNEES = ['Szindi', 'Fanni', 'Szilveszter']
 
@@ -21,6 +22,15 @@ function TicketModal({ ticket, onClose, currentUser }) {
       const newValue = !localTicket.resolved
       setLocalTicket((prev) => ({ ...prev, resolved: newValue }))
       await updateDoc(doc(db, 'tickets', ticket.id), { resolved: newValue })
+      if (ticket.clientId) {
+        await logClientActivity({
+          clientId: ticket.clientId,
+          type: 'ticket_resolved',
+          message: newValue ? 'Ticket lez?rva' : 'Ticket ?jranyitva',
+          meta: { ticketId: ticket.id },
+          actor: currentUser || 'Ismeretlen',
+        })
+      }
     } catch (err) {
       setError(err.message || 'Nem sikerült frissíteni')
     } finally {

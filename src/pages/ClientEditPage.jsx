@@ -6,6 +6,9 @@ import ClientForm from '../components/ClientForm'
 import { db } from '../firebase'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
+import { logClientActivity } from '../utils/clientActivity'
+import { useAuth } from '../hooks/useAuth.jsx'
+import { getAliasForEmail } from '../constants/userAliases'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
@@ -18,7 +21,7 @@ const buildFormDataFromClient = (client) =>
           typeof current === 'boolean'
             ? current
             : typeof current === 'string'
-              ? ['true', '1', 'active', 'aktiv', 'akt¡v'].includes(current.toLowerCase())
+              ? ['true', '1', 'active', 'aktiv', 'aktív'].includes(current.toLowerCase())
               : false
         acc[field.key] = normalized
       } else if (field.type === 'multiselect') {
@@ -54,9 +57,13 @@ function ClientEditPage() {
   const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
   const [formData, setFormData] = useState(emptyClient)
+  const [pristineData, setPristineData] = useState(emptyClient)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [formInitialized, setFormInitialized] = useState(false)
+  const { user } = useAuth()
+  const [showConfirmLeave, setShowConfirmLeave] = useState(false)
+  const [pendingNav, setPendingNav] = useState(null)
 
   const client = useMemo(() => clients.find((c) => c.id === clientId) || null, [clients, clientId])
 
@@ -66,22 +73,45 @@ function ClientEditPage() {
     return shortTax ? `/clients/tax/${encodeURIComponent(shortTax)}` : clientId ? `/clients/id/${clientId}` : '/clients'
   }, [client, clientId])
 
+  const actorName = useMemo(() => {
+    if (user?.displayName) return user.displayName
+    if (user?.email) return getAliasForEmail(user.email)
+    return 'Ismeretlen'
+  }, [user])
+
   useEffect(() => {
     if (clientsError) setError(clientsError)
   }, [clientsError])
 
   useEffect(() => {
     if (client && !formInitialized) {
-      setFormData(buildFormDataFromClient(client))
+      const built = buildFormDataFromClient(client)
+      setFormData(built)
+      setPristineData(built)
       setFormInitialized(true)
       setError('')
     } else if (!client && !clientsLoading && !clientsError) {
-      setError('Nem tal lhat¢ gyf‚l.')
+      setError('Nem található ügyfél.')
     }
   }, [client, clientsLoading, clientsError, formInitialized])
 
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const isDirty = useMemo(
+    () => JSON.stringify(formData) !== JSON.stringify(pristineData),
+    [formData, pristineData]
+  )
+
+  const requestNavigate = (path) => {
+    if (saving) return
+    if (isDirty) {
+      setPendingNav(() => () => navigate(path))
+      setShowConfirmLeave(true)
+    } else {
+      navigate(path)
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -91,11 +121,26 @@ function ClientEditPage() {
     setError('')
     try {
       await updateDoc(doc(db, 'clients', clientId), formData)
-      navigate(detailPath)
+      await logClientActivity({
+        clientId,
+        type: 'client_updated',
+        message: 'Ugyfel adat frissitve',
+        meta: {},
+        actor: actorName,
+      })
+      setPristineData(formData)
+      if (pendingNav) {
+        const go = pendingNav
+        setPendingNav(null)
+        go()
+      } else {
+        navigate(detailPath)
+      }
     } catch (err) {
-      setError(err.message || 'Ment‚si hiba')
+      setError(err.message || 'Mentési hiba')
     } finally {
       setSaving(false)
+      setShowConfirmLeave(false)
     }
   }
 
@@ -107,14 +152,14 @@ function ClientEditPage() {
             type="button"
             className="back-arrow"
             aria-label="Vissza"
-            onClick={() => navigate(detailPath)}
+            onClick={() => requestNavigate(detailPath)}
           >
             <TbArrowLeft />
           </button>
           <div className="section-header__intro">
-            <p className="eyebrow">gyf‚l</p>
-            <h1 className="section-title">{client?.nev || 'gyf‚l szerkeszt‚se'}</h1>
-            <p className="section-subtitle">Adatok szerkeszt‚se kグl別n oldalon</p>
+            <p className="eyebrow">Ügyfél</p>
+            <h1 className="section-title">{client?.nev || 'Ügyfél szerkesztése'}</h1>
+            <p className="section-subtitle">Adatok szerkesztése</p>
           </div>
         </div>
       </header>
@@ -122,9 +167,7 @@ function ClientEditPage() {
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
       <section className="panel">
-        {clientsLoading && !formInitialized ? (
-          <div className="banner">Betグlt‚s...</div>
-        ) : null}
+        {clientsLoading && !formInitialized ? <div className="banner">Betöltés...</div> : null}
 
         {client ? (
           <ClientForm
@@ -132,12 +175,52 @@ function ClientEditPage() {
             formData={formData}
             onChange={handleChange}
             onSubmit={handleSubmit}
-            onReset={() => navigate(detailPath)}
+            onReset={() => requestNavigate(detailPath)}
             editingId={clientId}
             saving={saving}
           />
         ) : null}
       </section>
+
+      {showConfirmLeave ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <header className="modal-header">
+              <h2>Változások mentése?</h2>
+            </header>
+            <div className="modal-body">
+              <p>Nem mentett módosításaid vannak. Mit szeretnél tenni?</p>
+              <div className="form-actions">
+                <button className="btn" type="button" onClick={handleSubmit} disabled={saving}>
+                  Mentés
+                </button>
+                <button
+                  className="btn ghost"
+                  type="button"
+                  onClick={() => {
+                    setShowConfirmLeave(false)
+                    setPendingNav(null)
+                  }}
+                  disabled={saving}
+                >
+                  Mégse
+                </button>
+                <button
+                  className="btn ghost"
+                  type="button"
+                  onClick={() => {
+                    setShowConfirmLeave(false)
+                    if (pendingNav) pendingNav()
+                  }}
+                  disabled={saving}
+                >
+                  Elvetés
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

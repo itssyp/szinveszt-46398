@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { TbArrowLeft } from 'react-icons/tb'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore'
 import ClientDetails from '../components/ClientDetails'
 import { fieldDefinitions } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
+import { useClientActivities } from '../hooks/useClientActivities'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { db } from '../firebase'
+import { logClientActivity } from '../utils/clientActivity'
+import { useAuth } from '../hooks/useAuth.jsx'
+import { getAliasForEmail } from '../constants/userAliases'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
 
@@ -24,6 +28,14 @@ function ClientDetailsPage() {
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
   const [ticketCount, setTicketCount] = useState(0)
+  const { activities, loading: activitiesLoading } = useClientActivities(docId)
+  const { user } = useAuth()
+
+  const actorName = useMemo(() => {
+    if (user?.displayName) return user.displayName
+    if (user?.email) return getAliasForEmail(user.email)
+    return 'Ismeretlen'
+  }, [user])
 
   useEffect(() => {
     if (clientsError) {
@@ -64,6 +76,59 @@ function ClientDetailsPage() {
 
   const title = useMemo(() => client?.nev || 'Ügyfél', [client])
 
+  const handleViewTickets = () => {
+    if (!docId) return
+    const params = new URLSearchParams()
+    params.set('clientId', docId)
+    if (client?.nev) params.set('clientName', client.nev)
+    navigate(`/tickets?${params.toString()}`)
+  }
+
+  const handleCreateTicketClick = () => {
+    if (!client) return
+    setTicketClient(client)
+    setTicketAssignee(actorName || '')
+    setTicketDescription('')
+    setTicketError('')
+  }
+
+  const handleCreateTicket = async () => {
+    if (!docId || !ticketClient) return
+    if (!ticketDescription.trim() || !ticketAssignee) {
+      setTicketError('Add meg a leírást és a felelőst.')
+      return
+    }
+    try {
+      setTicketSaving(true)
+      setTicketError('')
+      const ref = await addDoc(collection(db, 'tickets'), {
+        clientId: docId,
+        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
+        description: ticketDescription.trim(),
+        status: 'Nyitott',
+        createdBy: actorName || 'Ismeretlen',
+        assignedTo: ticketAssignee,
+        resolved: false,
+        createdAt: serverTimestamp(),
+        comments: [],
+      })
+      await logClientActivity({
+        clientId: docId,
+        type: 'ticket_created',
+        message: `Ticket: ${ticketDescription.trim().slice(0, 80)}`,
+        meta: { ticketId: ref.id, assignedTo: ticketAssignee },
+        actor: actorName || 'Ismeretlen',
+      })
+      setTicketClient(null)
+      setTicketDescription('')
+      setTicketAssignee(actorName || '')
+    } catch (err) {
+      setTicketError(err.message || 'Ticket létrehozása sikertelen')
+    } finally {
+      setTicketSaving(false)
+    }
+  }
+
   const goToEditPage = () => {
     if (!docId) return
     navigate(`/clients/id/${docId}/edit`)
@@ -95,39 +160,26 @@ function ClientDetailsPage() {
 
       {!loading && client ? (
         <section className="panel">
-          <div className="details-actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => {
-                if (!docId) return
-                const params = new URLSearchParams()
-                params.set('clientId', docId)
-                if (client?.nev) params.set('clientName', client.nev)
-                navigate(`/tickets?${params.toString()}`)
-              }}
-              title="Ticketek megnyitása"
-            >
-              Ticketek: {ticketCount}
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => {
-                setTicketClient(client)
-                setTicketAssignee('')
-                setTicketDescription('')
-                setTicketError('')
-              }}
-              title="Új ticket"
-            >
-              Új ticket
-            </button>
-            <button type="button" className="btn" onClick={goToEditPage}>
-              Szerkesztés
-            </button>
-          </div>
-          <ClientDetails client={client} onEdit={goToEditPage} fields={fieldDefinitions} />
+          <ClientDetails
+            client={client}
+            onEdit={goToEditPage}
+            onCreateTicket={handleCreateTicketClick}
+            onViewTickets={handleViewTickets}
+            ticketCount={ticketCount}
+            fields={fieldDefinitions}
+            onNavTestLog={async (payload) => {
+              if (!docId) return
+              await logClientActivity({
+                clientId: docId,
+                type: 'nav_test',
+                message: payload.message,
+                meta: payload.meta || {},
+                actor: actorName,
+              })
+            }}
+            activities={activities}
+            activitiesLoading={false}
+          />
         </section>
       ) : null}
 
@@ -138,11 +190,11 @@ function ClientDetailsPage() {
           onChangeDescription={setTicketDescription}
           assignedTo={ticketAssignee}
           onChangeAssignedTo={setTicketAssignee}
-          currentUser={ticketAssignee || 'Ismeretlen'}
+          currentUser={actorName}
           saving={ticketSaving}
           error={ticketError}
           onCancel={() => setTicketClient(null)}
-          onSubmit={() => setTicketClient(null)}
+          onSubmit={handleCreateTicket}
         />
       ) : null}
     </main>

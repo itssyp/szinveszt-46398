@@ -1,4 +1,5 @@
 import React from 'react'
+import { TbSend, TbX } from 'react-icons/tb'
 import Modal from './Modal'
 
 function TicketCreateModal({
@@ -48,14 +49,16 @@ function TicketCreateModal({
               />
             </div>
           </div>
-          <div className="form-actions">
-            <button className="btn" type="button" disabled={saving} onClick={onSubmit}>
-              {saving ? 'Mentés...' : 'Ticket létrehozása'}
-            </button>
-            <button className="btn ghost" type="button" onClick={onCancel} disabled={saving}>
-              Mégse
-            </button>
-          </div>
+        <div className="form-actions">
+          <button className="btn" type="button" disabled={saving} onClick={onSubmit}>
+            <TbSend />
+            {saving ? 'Mentés...' : 'Ticket létrehozása'}
+          </button>
+          <button className="btn ghost" type="button" onClick={onCancel} disabled={saving}>
+            <TbX />
+            Mégse
+          </button>
+        </div>
         </div>
       </div>
     </Modal>

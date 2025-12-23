@@ -1,6 +1,7 @@
-﻿import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { fieldGroups } from '../constants/clientFields'
 import { useNavOnlineConnectionTest } from '../hooks/useNavOnlineConnectionTest'
+import ClientActivityTimeline from './ClientActivityTimeline'
 
 function formatValue(key, value, fields) {
   const fieldMeta = fields.find((f) => f.key === key)
@@ -22,7 +23,6 @@ function formatValue(key, value, fields) {
   return value || '-'
 }
 
-// Proxy base
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'szinveszt-46398'
 const FUNCTIONS_REGION = import.meta.env.VITE_FUNCTIONS_REGION || 'europe-west3'
 const EMULATOR_HOST = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || 'http://127.0.0.1:5001'
@@ -31,9 +31,21 @@ const API_BASE = import.meta.env.DEV
   ? `${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}/navProxy`
   : `https://${FUNCTIONS_REGION}-${PROJECT_ID}.cloudfunctions.net/navProxy`
 
-function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
+function ClientDetails({
+  client,
+  onEdit,
+  onCreateTicket,
+  onViewTickets,
+  ticketCount = 0,
+  fields,
+  onNavTestLog,
+  activities = [],
+  activitiesLoading = false,
+}) {
   const labels = fields.reduce((acc, f) => ({ ...acc, [f.key]: f.label }), {})
-  const [activeTab, setActiveTab] = React.useState('general')
+  const [activeTab, setActiveTab] = useState('general')
+  const lastNavStatus = useRef('idle')
+  const navLogger = onNavTestLog || (() => {})
 
   const navKeys = [
     'navOnlineActive',
@@ -49,103 +61,149 @@ function ClientDetails({ client, onEdit, onCreateTicket, fields }) {
     endpoint: `${API_BASE}/test-connection`,
   })
 
+  useEffect(() => {
+    if (navTest.status === 'idle' || navTest.status === 'running') {
+      lastNavStatus.current = navTest.status
+      return
+    }
+    if (lastNavStatus.current === navTest.status) return
+    lastNavStatus.current = navTest.status
+    const ok = navTest.status === 'success'
+    navLogger({
+      message: ok ? 'NAV teszt sikeres' : `NAV teszt hiba: ${navTest.error?.message || 'Ismeretlen hiba'}`,
+      meta: { ok, error: navTest.error },
+    })
+  }, [navTest.status, navTest.error, navLogger])
 
   const generalGroups = fieldGroups.filter((group) => group.title !== 'NAV online számla')
 
-  return (
-    <div className="details">
-
-      <div className="details-tabs">
-        <button
-          type="button"
-          className={`details-tab${activeTab === 'general' ? ' active' : ''}`}
-          onClick={() => setActiveTab('general')}
-        >
-          Általános
-        </button>
-        <button
-          type="button"
-          className={`details-tab${activeTab === 'nav' ? ' active' : ''}`}
-          onClick={() => setActiveTab('nav')}
-        >
-          NAV online számla
-        </button>
+  let tabContent = null
+  if (activeTab === 'general') {
+    tabContent = generalGroups.map((group) => (
+      <div key={group.title} className="details-section details-section--line">
+        <h3>{group.title}</h3>
+        <div className="details-grid">
+          {group.keys.map((key) => (
+            <div key={key} className="details-item">
+              <span className="details-label">{labels[key] || key}</span>
+              <span className="details-value">{formatValue(key, client[key], fields)}</span>
+            </div>
+          ))}
+        </div>
       </div>
+    ))
+  } else if (activeTab === 'nav') {
+    tabContent = (
+      <div className="details-section details-section--line">
+        <div className="details-header">
+          <h3>NAV online számla</h3>
 
-      {activeTab === 'general' ? (
-        generalGroups.map((group) => (
-          <div key={group.title} className="details-section">
-            <h3>{group.title}</h3>
-            <div className="details-grid">
-              {group.keys.map((key) => (
-                <div key={key} className="details-item">
-                  <span className="details-label">{labels[key] || key}</span>
-                  <span className="details-value">{formatValue(key, client[key], fields)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
-      ) : (
-        <div className="details-section">
-          <div className="details-header">
-            <h3>NAV online számla</h3>
+          <div className="details-actions inline">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={navTest.run}
+              disabled={!navTest.canTest || navTest.status === 'running'}
+              title={!navTest.canTest ? 'Hiányzó NAV adatok (felhasználónév, jelszó, aláírókulcs).' : 'NAV kapcsolat teszt'}
+            >
+              {navTest.status === 'running' ? 'Teszt folyamatban.' : 'Kapcsolat teszt'}
+            </button>
 
-            <div className="details-actions inline">
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={navTest.run}
-                disabled={!navTest.canTest || navTest.status === 'running'}
-                title={!navTest.canTest ? 'Hiányzó NAV adatok (felhasználónév, jelszó, aláírókulcs).' : 'NAV kapcsolat teszt'}
-              >
-                {navTest.status === 'running' ? 'Teszt folyamatban…' : 'Kapcsolat teszt'}
+            {(navTest.status === 'success' || navTest.status === 'error') && (
+              <button type="button" className="btn ghost" onClick={navTest.reset} title="Eredmény törlése">
+                Reset
               </button>
-
-              {(navTest.status === 'success' || navTest.status === 'error') && (
-                <button type="button" className="btn ghost" onClick={navTest.reset} title="Eredmény törlése">
-                  Reset
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Status banner */}
-          {navTest.status === 'success' ? (
-            <div className="details-banner success">
-              ✅ NAV kapcsolat OK
-              {navTest.result?.checks ? (
-                <div className="helper-text">
-                  {navTest.result.checks.query ? `Lekérdezés: ${navTest.result.checks.query.ok ? 'OK' : 'HIBA'}` : null}
-                  {navTest.result.checks.tokenExchange
-                    ? ` • TokenExchange: ${navTest.result.checks.tokenExchange.ok ? 'OK' : 'HIBA'}`
-                    : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {navTest.status === 'error' ? (
-            <div className="details-banner error">
-              ❌ NAV teszt sikertelen
-              <div className="helper-text">
-                {navTest.error?.errorCode ? <div><b>Kód:</b> {navTest.error.errorCode}</div> : null}
-                {navTest.error?.status ? <div><b>HTTP:</b> {navTest.error.status}</div> : null}
-                {navTest.error?.message ? <div><b>Üzenet:</b> {navTest.error.message}</div> : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="details-grid details-grid-spaced">
-            {navKeys.map((key) => (
-              <div key={key} className="details-item">
-                <span className="details-label">{labels[key] || key}</span>
-                <span className="details-value">{formatValue(key, client[key], fields)}</span>
-              </div>
-            ))}
+            )}
           </div>
         </div>
-      )}
+
+        {navTest.status === 'success' ? (
+          <div className="details-banner success">
+            ✓ NAV kapcsolat OK
+            {navTest.result?.checks ? (
+              <div className="helper-text">
+                {navTest.result.checks.query ? `Lekérdezés: ${navTest.result.checks.query.ok ? 'OK' : 'HIBA'}` : null}
+                {navTest.result.checks.tokenExchange
+                  ? ` TokenExchange: ${navTest.result.checks.tokenExchange.ok ? 'OK' : 'HIBA'}`
+                  : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {navTest.status === 'error' ? (
+          <div className="details-banner error">
+            ⚠ NAV teszt sikertelen
+            <div className="helper-text">
+              {navTest.error?.errorCode ? <div><b>Kód:</b> {navTest.error.errorCode}</div> : null}
+              {navTest.error?.status ? <div><b>HTTP:</b> {navTest.error.status}</div> : null}
+              {navTest.error?.message ? <div><b>Üzenet:</b> {navTest.error.message}</div> : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="details-grid details-grid-spaced">
+          {navKeys.map((key) => (
+            <div key={key} className="details-item">
+              <span className="details-label">{labels[key] || key}</span>
+              <span className="details-value">{formatValue(key, client[key], fields)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  } else {
+    tabContent = (
+      <div className="details-section details-section--line">
+        <div className="details-header">
+          <h3>Aktivitás</h3>
+        </div>
+        {activitiesLoading ? <p className="muted">Betöltés...</p> : <ClientActivityTimeline activities={activities} />}
+      </div>
+    )
+  }
+
+  return (
+    <div className="details">
+      <div className="details-top">
+        <div className="details-tabs">
+          <button
+            type="button"
+            className={`details-tab${activeTab === 'general' ? ' active' : ''}`}
+            onClick={() => setActiveTab('general')}
+          >
+            Általános
+          </button>
+          <button
+            type="button"
+            className={`details-tab${activeTab === 'nav' ? ' active' : ''}`}
+            onClick={() => setActiveTab('nav')}
+          >
+            NAV online számla
+          </button>
+          <button
+            type="button"
+            className={`details-tab${activeTab === 'activity' ? ' active' : ''}`}
+            onClick={() => setActiveTab('activity')}
+          >
+            Aktivitás
+          </button>
+        </div>
+
+        <div className="details-actions inline">
+          <button type="button" className="btn ghost" onClick={onViewTickets} title="Ticketek">
+            Ticketek: {ticketCount}
+          </button>
+          <button type="button" className="btn ghost" onClick={onCreateTicket}>
+            Új ticket
+          </button>
+          <button type="button" className="btn" onClick={onEdit}>
+            Szerkesztés
+          </button>
+        </div>
+      </div>
+
+      {tabContent}
     </div>
   )
 }

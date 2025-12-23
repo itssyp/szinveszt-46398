@@ -6,7 +6,7 @@ import Modal from '../components/Modal'
 import TicketModal from '../components/TicketModal'
 
 function TicketsPage({ currentUser }) {
-  const { data: tickets, error } = useCollectionSubscription('tickets', (coll) =>
+  const { data: tickets, error, loading } = useCollectionSubscription('tickets', (coll) =>
     query(coll, orderBy('createdAt', 'desc'))
   )
   const [selectedTicket, setSelectedTicket] = useState(null)
@@ -129,31 +129,52 @@ function TicketsPage({ currentUser }) {
             </div>
           </div>
           <div className="ticket-list">
-            {filteredTickets.map((t) => (
-              <div
-                key={t.id}
-                className={`ticket-row clickable ${t.assignedTo ? `assignee-${t.assignedTo.toLowerCase()}` : ''}`}
-                onClick={() => setSelectedTicket(t)}
-              >
-                <div className="ticket-head">
-                  <div className="ticket-client">{t.clientName || 'Ismeretlen ügyfél'}</div>
-                  <div className={`ticket-status ${t.resolved ? 'is-resolved' : 'is-open'}`}>
-                    {t.resolved ? 'Megoldva' : 'Nyitott'}
+            {loading ? (
+              <div className="skeleton-ticket-grid">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div className="ticket-row skeleton-card" key={idx}>
+                    <div className="ticket-head">
+                      <div className="skeleton lg wide" style={{ width: '38%' }} />
+                      <div className="skeleton skeleton-pill" />
+                    </div>
+                    <div className="skeleton md wide" style={{ width: '72%' }} />
+                    <div className="ticket-meta">
+                      <span className="skeleton sm" style={{ width: '30%' }} />
+                      <span className="skeleton sm" style={{ width: '20%' }} />
+                      <span className="skeleton sm" style={{ width: '24%' }} />
+                    </div>
                   </div>
-                </div>
-                <div className="ticket-desc">{t.description || 'Nincs leírás'}</div>
-                <div className="ticket-meta">
-                  <span>
-                    {t.createdAt?.toDate
-                      ? t.createdAt.toDate().toLocaleString()
-                      : 'Nincs dátum'}
-                  </span>
-                  {t.clientId ? <span className="muted">ID: {t.clientId}</span> : null}
-                  {t.assignedTo ? <span className="muted">Felelős: {t.assignedTo}</span> : null}
-                </div>
+                ))}
               </div>
-            ))}
-            {!filteredTickets.length ? <p className="muted">Nincsenek ticketek.</p> : null}
+            ) : (
+              <>
+                {filteredTickets.map((t) => (
+                  <div
+                    key={t.id}
+                    className={`ticket-row clickable ${t.assignedTo ? `assignee-${t.assignedTo.toLowerCase()}` : ''}`}
+                    onClick={() => setSelectedTicket(t)}
+                  >
+                    <div className="ticket-head">
+                      <div className="ticket-client">{t.clientName || 'Ismeretlen ügyfél'}</div>
+                      <div className={`ticket-status ${t.resolved ? 'is-resolved' : 'is-open'}`}>
+                        {t.resolved ? 'Megoldva' : 'Nyitott'}
+                      </div>
+                    </div>
+                    <div className="ticket-desc">{t.description || 'Nincs leírás'}</div>
+                    <div className="ticket-meta">
+                      <span>
+                        {t.createdAt?.toDate
+                          ? t.createdAt.toDate().toLocaleString()
+                          : 'Nincs dátum'}
+                      </span>
+                      {t.clientId ? <span className="muted">ID: {t.clientId}</span> : null}
+                      {t.assignedTo ? <span className="muted">Felelős: {t.assignedTo}</span> : null}
+                    </div>
+                  </div>
+                ))}
+                {!filteredTickets.length ? <p className="muted">Nincsenek ticketek.</p> : null}
+              </>
+            )}
           </div>
         </div>
       </section>

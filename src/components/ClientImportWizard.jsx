@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { collection, doc, writeBatch } from 'firebase/firestore'
+import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'
 import Modal from './Modal'
 import { parseWorkbook } from '../utils/xlsxParser'
 import { clientImportSchema, REQUIRED_FIELDS } from '../constants/clientImportSchema'
@@ -170,12 +170,14 @@ function ClientImportWizard({ onClose, clients = [], onComplete }) {
     setImporting(true)
     setError('')
     const coll = collection(db, 'clients')
-    const BATCH_SIZE = 400
+    const BATCH_SIZE = 200
     let batch = writeBatch(db)
     let pending = 0
     let created = 0
     let updated = 0
     let failed = 0
+    let activityBatch = writeBatch(db)
+    let activityPending = 0
 
     const flush = async () => {
       if (pending === 0) return
@@ -184,9 +186,17 @@ function ClientImportWizard({ onClose, clients = [], onComplete }) {
       pending = 0
     }
 
+    const flushActivities = async () => {
+      if (activityPending === 0) return
+      await activityBatch.commit()
+      activityBatch = writeBatch(db)
+      activityPending = 0
+    }
+
     try {
       for (const row of preview.validRows) {
         const payload = row.data
+        let clientIdForActivity = row.targetId || payload.id || payload.clientId || ''
         if (row.action === 'update' && row.targetId) {
           const ref = doc(coll, row.targetId)
           batch.update(ref, payload)
@@ -194,12 +204,26 @@ function ClientImportWizard({ onClose, clients = [], onComplete }) {
         } else {
           const ref = doc(coll)
           batch.set(ref, payload)
+          clientIdForActivity = ref.id
           created += 1
         }
         pending += 1
         if (pending >= BATCH_SIZE) await flush()
+
+        const actRef = doc(collection(db, 'clientActivities'))
+        activityBatch.set(actRef, {
+          clientId: clientIdForActivity,
+          type: 'import',
+          message: row.action === 'update' ? 'Import: frissites' : 'Import: letrehozas',
+          meta: { action: row.action },
+          actor: 'Import',
+          createdAt: serverTimestamp(),
+        })
+        activityPending += 1
+        if (activityPending >= BATCH_SIZE) await flushActivities()
       }
       await flush()
+      await flushActivities()
       const result = { created, updated, skipped: preview.invalidRows.length, failed }
       setImportResult(result)
       if (onComplete) onComplete(result)
@@ -211,7 +235,7 @@ function ClientImportWizard({ onClose, clients = [], onComplete }) {
     }
   }
 
-  const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT), [preview])
+const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT), [preview])
 
   return (
     <Modal title="Excel import varázsló" onClose={onClose}>
@@ -444,3 +468,4 @@ function ClientImportWizard({ onClose, clients = [], onComplete }) {
 }
 
 export default ClientImportWizard
+
