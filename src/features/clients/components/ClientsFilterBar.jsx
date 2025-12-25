@@ -25,23 +25,23 @@ function ClientsFilterBar({
         <div className="input-shell search-field wide-search">
           <input
             type="search"
-            placeholder="Keresйs nйv vagy adуszбm alapjбn..."
+            placeholder="Keresés név vagy adószám alapján..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
           />
         </div>
         <div className="filter-bar">
           <label className="filter-control">
-            <span>Stбtusz</span>
+            <span>Státusz</span>
             <select value={statusFilter} onChange={(e) => onStatusChange(e.target.value)}>
               <option value="">Mind</option>
-              <option value="Aktiv">Aktнv</option>
-              <option value="Szunetel">Szьnetel</option>
-              <option value="Megszunt">Megszьnt</option>
+              <option value="Aktiv">Aktív</option>
+              <option value="Szunetel">Szünetel</option>
+              <option value="Megszunt">Megszűnt</option>
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdйs бve</span>
+            <span>Kezdés éve</span>
             <select value={startYear} onChange={(e) => onYearChange(e.target.value)}>
               <option value="">Mind</option>
               {availableYears.map((year) => (
@@ -52,7 +52,7 @@ function ClientsFilterBar({
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdйs hуnapja</span>
+            <span>Kezdés hónapja</span>
             <select value={startMonth} onChange={(e) => onMonthChange(e.target.value)}>
               <option value="">Mind</option>
               {monthOptions.map((m) => (
@@ -63,18 +63,18 @@ function ClientsFilterBar({
             </select>
           </label>
           <label className="filter-control">
-            <span>Rendezйs</span>
+            <span>Rendezés</span>
             <select value={sortBy} onChange={(e) => onSortChange(e.target.value)}>
-              <option value="name">Nйv (A-Z)</option>
-              <option value="start-desc">Kezdйs dбtuma (legъjabb)</option>
-              <option value="start-asc">Kezdйs dбtuma (legrйgebbi)</option>
+              <option value="name">Név (A-Z)</option>
+              <option value="start-desc">Kezdés dátuma (legújabb)</option>
+              <option value="start-asc">Kezdés dátuma (legrégebbi)</option>
             </select>
           </label>
           <button
             type="button"
             className="view-toggle-btn"
             onClick={onToggleView}
-            title={viewMode === 'cards' ? 'Vбltбs listбra' : 'Vбltбs kбrtyбkra'}
+            title={viewMode === 'cards' ? 'Váltás listára' : 'Váltás kártyákra'}
           >
             <span className="view-toggle-icon" aria-hidden="true">
               {viewMode === 'cards' ? <TbList /> : <TbLayoutGrid />}

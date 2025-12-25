@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import ClientForm from '../components/ClientForm'
 import Modal from '../components/Modal'
@@ -18,6 +18,7 @@ import ClientsFilterBar from '../features/clients/components/ClientsFilterBar'
 import ClientListView from '../features/clients/components/ClientListView'
 import ClientSkeletons from '../features/clients/components/ClientSkeletons'
 import { buildExistingIdSet } from '../features/clients/utils/clientDates'
+import { TbTrash } from 'react-icons/tb'
 
 function ClientsPage({ currentUser }) {
   const navigate = useNavigate()
@@ -35,6 +36,10 @@ function ClientsPage({ currentUser }) {
   const [ticketError, setTicketError] = useState('')
   const [showImportWizard, setShowImportWizard] = useState(false)
   const [showIncomeImport, setShowIncomeImport] = useState(false)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [deleting, setDeleting] = useState(false)
+  const selectAllRef = useRef(null)
+  const [selectionMode, setSelectionMode] = useState(false)
 
   const {
     filters: { searchTerm, statusFilter, startYear, startMonth, sortBy, viewMode },
@@ -46,6 +51,30 @@ function ClientsPage({ currentUser }) {
   } = useClientFilters(clients)
 
   const existingIds = useMemo(() => buildExistingIdSet(clients), [clients])
+  const visibleIds = useMemo(() => filteredClients.map((c) => c.id), [filteredClients])
+  const selectedInView = useMemo(
+    () => selectedIds.filter((id) => visibleIds.includes(id)),
+    [selectedIds, visibleIds]
+  )
+  const allVisibleSelected = visibleIds.length > 0 && selectedInView.length === visibleIds.length
+  const someVisibleSelected = selectedInView.length > 0 && !allVisibleSelected
+
+  useEffect(() => {
+    if (!selectionMode || !selectAllRef.current) return
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected
+    }
+  }, [someVisibleSelected, allVisibleSelected, selectionMode])
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => clients.some((c) => c.id === id)))
+  }, [clients])
+
+  useEffect(() => {
+    if (selectionMode && selectedIds.length === 0) {
+      setSelectionMode(false)
+    }
+  }, [selectedIds, selectionMode])
 
   useEffect(() => {
     if (clientsError) {
@@ -64,6 +93,49 @@ function ClientsPage({ currentUser }) {
     setFormData(emptyClient)
     setEditingId(null)
     setShowFormModal(false)
+  }
+
+  const toggleSelectClient = (clientId) => {
+    setSelectionMode(true)
+    setSelectedIds((prev) => {
+      if (prev.includes(clientId)) return prev.filter((id) => id !== clientId)
+      return [...prev, clientId]
+    })
+  }
+
+  const toggleSelectAllVisible = () => {
+    setSelectionMode(true)
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        return prev.filter((id) => !visibleIds.includes(id))
+      }
+      const merged = new Set([...prev, ...visibleIds])
+      return Array.from(merged)
+    })
+  }
+
+  const clearSelection = () => {
+    setSelectedIds([])
+    setSelectionMode(false)
+  }
+
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.length) return
+    const confirmed = window.confirm('Biztosan törölni szeretnéd a kijelölt ügyfeleket?')
+    if (!confirmed) return
+    setDeleting(true)
+    setError('')
+    try {
+      await Promise.all(selectedIds.map((id) => deleteDoc(doc(db, 'clients', id))))
+      setSelectedIds([])
+      setSelectionMode(false)
+      setStatus({ message: 'Kijelölt ügyfelek törölve.', ok: true })
+    } catch (err) {
+      setError(err.message || 'Törlés sikertelen')
+      setStatus({ message: 'Nem sikerült törölni a kijelölt ügyfeleket.', ok: false })
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -150,6 +222,22 @@ function ClientsPage({ currentUser }) {
     else navigate(`/clients/id/${client.id}`)
   }
 
+  const handleClientClick = (client) => {
+    if (selectionMode) {
+      toggleSelectClient(client.id)
+    } else {
+      handleSelectClient(client)
+    }
+  }
+
+  const handleClientLongPress = (clientId) => {
+    setSelectionMode(true)
+    setSelectedIds((prev) => {
+      if (prev.includes(clientId)) return prev
+      return [...prev, clientId]
+    })
+  }
+
   return (
     <main className="page-container">
       <ClientsHeader
@@ -179,12 +267,49 @@ function ClientsPage({ currentUser }) {
         onToggleView={toggleViewMode}
       />
 
+      {selectionMode ? (
+        <div className="selection-bar">
+          <label className="selection-bar__control">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              aria-label="Select all clients in view"
+            />
+            <span>Kijelölés ezen a listán</span>
+          </label>
+          <div className="selection-bar__actions">
+            <span className="pill">{selectedIds.length} kiválasztva</span>
+            <button className="btn ghost" type="button" onClick={clearSelection} disabled={!selectedIds.length}>
+              Kijelölés törlése
+            </button>
+            <button
+              className="btn ghost danger"
+              type="button"
+              onClick={handleDeleteSelected}
+              disabled={!selectedIds.length || deleting}
+              aria-label="Delete selected clients"
+            >
+              {deleting ? '...' : <TbTrash />}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {viewMode === 'cards' ? (
         <section className="content-grid">
           {clientsLoading && !clients.length ? (
             <ClientSkeletons variant="cards" />
           ) : (
-            <ClientCards clients={filteredClients} onSelect={handleSelectClient} />
+            <ClientCards
+              clients={filteredClients}
+              onSelect={handleClientClick}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelectClient}
+              onLongPress={handleClientLongPress}
+              selectionMode={selectionMode}
+            />
           )}
         </section>
       ) : (
@@ -192,7 +317,18 @@ function ClientsPage({ currentUser }) {
           {clientsLoading && !clients.length ? (
             <ClientSkeletons variant="list" filteredCount={filteredClients.length} />
           ) : (
-            <ClientListView clients={filteredClients} onSelect={handleSelectClient} formatStartDate={formatStartDate} />
+            <ClientListView
+              clients={filteredClients}
+              onSelect={handleClientClick}
+              onToggleSelect={toggleSelectClient}
+              selectedIds={selectedIds}
+              allVisibleSelected={allVisibleSelected}
+              someVisibleSelected={someVisibleSelected}
+              onToggleSelectAll={toggleSelectAllVisible}
+              formatStartDate={formatStartDate}
+              onLongPress={handleClientLongPress}
+              selectionMode={selectionMode}
+            />
           )}
         </section>
       )}

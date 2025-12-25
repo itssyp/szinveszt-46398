@@ -23,15 +23,15 @@ function ClientSkeletons({ variant = 'cards', count = 6, filteredCount = 0 }) {
       <div className="client-list__toolbar">
         <div>
           <p className="eyebrow">Lista</p>
-          <h2>Гgyfelek</h2>
+          <h2>Ügyfelek</h2>
         </div>
         <span className="pill">{filteredCount || '...'}</span>
       </div>
       <div className="client-list__header">
-        <span>Nйv</span>
-        <span>Adуszбm</span>
+        <span>Név</span>
+        <span>Adószám</span>
         <span>E-mail</span>
-        <span>Kezdйs dбtuma</span>
+        <span>Kezdés dátuma</span>
       </div>
       {Array.from({ length: count }).map((_, idx) => (
         <div key={idx} className="client-list__row">

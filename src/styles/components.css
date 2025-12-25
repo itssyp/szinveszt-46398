@@ -45,6 +45,22 @@
   box-shadow: none;
 }
 
+.btn.danger {
+  border-color: var(--danger);
+  background: linear-gradient(135deg, var(--danger), color-mix(in srgb, var(--danger) 88%, #7f1d1d));
+}
+
+.btn.ghost.danger {
+  color: var(--danger);
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+.btn.ghost.danger:hover {
+  border-color: var(--danger);
+  background: #ffe4e6;
+}
+
 .icon-btn {
   width: 38px;
   height: 38px;
@@ -447,6 +463,33 @@ textarea {
   right: 0;
   height: 3px;
   background: linear-gradient(90deg, rgba(15, 154, 138, 0.85), rgba(79, 70, 229, 0.5));
+}
+
+.client-card[data-selected='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 16px 32px rgba(15, 154, 138, 0.14);
+  background: #ecfeff;
+}
+
+.client-card.has-selector {
+  padding-right: 44px;
+}
+
+.client-card__checkbox {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.client-card__checkbox input {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: none;
 }
 
 .client-header {

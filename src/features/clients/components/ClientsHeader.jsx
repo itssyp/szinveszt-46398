@@ -7,29 +7,29 @@ function ClientsHeader({ clientsCount, filteredCount, status, onOpenImportWizard
     <header className="section-header">
       <div className="section-header__top">
         <div>
-          <p className="eyebrow">よgyfゼl tзrzsadatok</p>
-          <h1 className="section-title">Szinveszt グgyfゼlkezelЪ</h1>
-          <p className="section-subtitle">KeresЪs, importбlбs, szerkesztЪs egy helyen.</p>
+          <p className="eyebrow">Ügyfél törzsadatok</p>
+          <h1 className="section-title">Szinveszt ügyfélkezelés</h1>
+          <p className="section-subtitle">Keresés, importálás, szerkesztés egy helyen.</p>
         </div>
         <div className="section-header__actions">
           <button className="btn ghost" type="button" onClick={onOpenImportWizard}>
-            <TbUpload /> Excel import (ъj)
+            <TbUpload /> Excel import (új)
           </button>
           <button className="btn ghost" type="button" onClick={onOpenIncomeImport}>
-            <TbUpload /> Bevйtelek import
+            <TbUpload /> Bevételek import
           </button>
           <button className="btn" type="button" onClick={onAddClient}>
-            <TbUserPlus /> ъj Гgyfйl
+            <TbUserPlus /> Új ügyfél
           </button>
         </div>
       </div>
       <div className="metric-bar">
         <div className="metric-card">
-          <span className="metric-label">Цsszes Гgyfйl</span>
+          <span className="metric-label">Összes ügyfél</span>
           <span className="metric-value">{clientsCount}</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Szыrt lista</span>
+          <span className="metric-label">Szűrt lista</span>
           <span className="metric-value">{filteredCount}</span>
         </div>
         <StatusBadge ok={status.ok} message={status.message} />
