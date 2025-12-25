@@ -11,39 +11,57 @@ function Login({ onSubmit, error, loading }) {
   }
 
   return (
-    <div className="page-container" style={{ maxWidth: 480 }}>
-      <div className="panel" style={{ gap: 14, display: 'flex', flexDirection: 'column' }}>
-        <div>
-          <p className="eyebrow">Belépés</p>
-          <h1 className="section-title">Bejelentkezés</h1>
-          <p className="section-subtitle">Csak létező Firebase felhasználók léphetnek be. Nincs regisztráció.</p>
+    <div className="login-layout">
+      <div className="login-brand">
+        <div className="login-brand__content">
+          <img src="/szinveszt-logo.png" alt="Szinveszt" className="login-brand__logo" />
+          <div className="login-brand__text">
+            <h1>SZINVESZT</h1>
+            <p className="login-brand__subtitle">Adatvezérelt ügyfélkezelés, egyetlen biztonságos felületen.</p>
+            <p className="login-brand__copy">
+              Kövesd a státuszokat, rögzítsd az ügyeket és importáld az adatokat egy lépésben. Minden, mindenre, egyhelyen.
+            </p>
+          </div>
         </div>
-        <form className="form-shell" onSubmit={handleSubmit}>
-          <label className="form-field">
-            <span>E-mail</span>
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </label>
-          <label className="form-field">
-            <span>Jelszó</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
-          {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
-          <button className="btn" type="submit" disabled={loading}>
-            {loading ? 'Bejelentkezés...' : 'Belépés'}
-          </button>
-        </form>
+      </div>
+
+      <div className="login-form-panel">
+        <div className="login-card">
+          <div className="login-card__header">
+            <p className="eyebrow">Belépés</p>
+            <h1 className="section-title">Bejelentkezés</h1>
+            <p className="section-subtitle">
+              Csak létező Firebase felhasználók léphetnek be. Nincs regisztráció.
+            </p>
+          </div>
+          <form className="login-form" onSubmit={handleSubmit}>
+            <label className="form-field">
+              <span>E-mail</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label className="form-field">
+              <span>Jelszó</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+            {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+            <button className="btn login-submit" type="submit" disabled={loading}>
+              {loading ? 'Bejelentkezés...' : 'Belépés'}
+            </button>
+            <p className="login-help">Segítségre van szükséged? Fordulj a rendszergazdához.</p>
+          </form>
+        </div>
       </div>
     </div>
   )
