@@ -1,30 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import {
-  addDoc,
-  collection,
-  doc,
-  updateDoc,
-  query,
-  orderBy,
-  serverTimestamp,
-} from 'firebase/firestore'
-import { TbLayoutGrid, TbList, TbUserPlus, TbUpload } from 'react-icons/tb'
 import ClientForm from '../components/ClientForm'
-import StatusBadge from '../components/StatusBadge'
 import Modal from '../components/Modal'
-import ClientCards, { statusClass } from '../components/ClientCards'
+import ClientCards from '../components/ClientCards'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import ClientImportWizard from '../components/ClientImportWizard'
 import IncomesImportModal from '../components/IncomesImportModal'
 import { logClientActivity } from '../utils/clientActivity'
-
-const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
+import { normalizeNumericId, normalizeTaxId } from '../utils/id'
+import { useClientFilters } from '../features/clients/hooks/useClientFilters'
+import ClientsHeader from '../features/clients/components/ClientsHeader'
+import ClientsFilterBar from '../features/clients/components/ClientsFilterBar'
+import ClientListView from '../features/clients/components/ClientListView'
+import ClientSkeletons from '../features/clients/components/ClientSkeletons'
+import { buildExistingIdSet } from '../features/clients/utils/clientDates'
 
 function ClientsPage({ currentUser }) {
+  const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
   const [formData, setFormData] = useState(emptyClient)
   const [editingId, setEditingId] = useState(null)
@@ -32,12 +28,6 @@ function ClientsPage({ currentUser }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [showFormModal, setShowFormModal] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [startYear, setStartYear] = useState('')
-  const [startMonth, setStartMonth] = useState('')
-  const [sortBy, setSortBy] = useState('name')
-  const [viewMode, setViewMode] = useState('cards')
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketAssignee, setTicketAssignee] = useState(currentUser || '')
@@ -45,18 +35,17 @@ function ClientsPage({ currentUser }) {
   const [ticketError, setTicketError] = useState('')
   const [showImportWizard, setShowImportWizard] = useState(false)
   const [showIncomeImport, setShowIncomeImport] = useState(false)
-  const navigate = useNavigate()
 
-  const existingIds = useMemo(() => {
-    const set = new Set()
-    clients.forEach((c) => {
-      const tax = normalizeId(c.adoszam)
-      const pid = normalizeId(c.adoazonosito)
-      if (tax) set.add(`tax:${tax}`)
-      if (pid) set.add(`pid:${pid}`)
-    })
-    return set
-  }, [clients])
+  const {
+    filters: { searchTerm, statusFilter, startYear, startMonth, sortBy, viewMode },
+    setters: { setSearchTerm, setStatusFilter, setStartYear, setStartMonth, setSortBy },
+    toggleViewMode,
+    filteredClients,
+    availableYears,
+    formatStartDate,
+  } = useClientFilters(clients)
+
+  const existingIds = useMemo(() => buildExistingIdSet(clients), [clients])
 
   useEffect(() => {
     if (clientsError) {
@@ -82,8 +71,8 @@ function ClientsPage({ currentUser }) {
     setSaving(true)
     setError('')
     try {
-      const normalizedTax = normalizeId(formData.adoszam)
-      const normalizedPid = normalizeId(formData.adoazonosito)
+      const normalizedTax = normalizeNumericId(formData.adoszam)
+      const normalizedPid = normalizeNumericId(formData.adoazonosito)
       if (!editingId) {
         if (normalizedTax && existingIds.has(`tax:${normalizedTax}`)) {
           throw new Error('Már létezik ügyfél ezzel az adószámmal.')
@@ -154,275 +143,56 @@ function ClientsPage({ currentUser }) {
     }
   }
 
-  const parseStartDate = (client) => {
-    const raw = client.kezdesDatuma
-    if (raw && typeof raw === 'object' && raw.toDate) return raw.toDate()
-    if (raw instanceof Date) return raw
-    if (typeof raw === 'string' && raw) return new Date(raw)
-    return null
-  }
-
-  const formatStartDate = (client) => {
-    const date = parseStartDate(client)
-    if (!date) return '-'
-    return date.toLocaleDateString('hu-HU')
-  }
-
-  const filteredClients = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    return clients
-      .filter((client) => {
-        if (term) {
-          const name = (client.nev || '').toLowerCase()
-          const tax = (client.adoszam || '').toLowerCase()
-          if (!name.includes(term) && !tax.includes(term)) return false
-        }
-        if (statusFilter && (client.statusz || '').toLowerCase() !== statusFilter.toLowerCase()) {
-          return false
-        }
-        const start = parseStartDate(client)
-        if (startYear && (!start || start.getFullYear().toString() !== startYear)) {
-          return false
-        }
-        if (startMonth) {
-          const monthVal = start ? String(start.getMonth() + 1).padStart(2, '0') : ''
-          if (monthVal !== startMonth) return false
-        }
-        return true
-      })
-      .sort((a, b) => {
-        if (sortBy === 'start-desc' || sortBy === 'start-asc') {
-          const dateA = parseStartDate(a)?.getTime() || 0
-          const dateB = parseStartDate(b)?.getTime() || 0
-          return sortBy === 'start-desc' ? dateB - dateA : dateA - dateB
-        }
-        const nameA = (a.nev || '').toLowerCase()
-        const nameB = (b.nev || '').toLowerCase()
-        return nameA.localeCompare(nameB, 'hu')
-      })
-  }, [clients, searchTerm, statusFilter, startYear, startMonth, sortBy])
-
-  const availableYears = useMemo(() => {
-    const years = new Set()
-    clients.forEach((c) => {
-      const date = parseStartDate(c)
-      if (date) years.add(date.getFullYear().toString())
-    })
-    return Array.from(years).sort((a, b) => b.localeCompare(a))
-  }, [clients])
-
-  const renderClientSkeletons = (variant = viewMode) => {
-    const count = variant === 'cards' ? 6 : 6
-    if (variant === 'cards') {
-      return (
-        <div className="client-grid">
-          {Array.from({ length: count }).map((_, idx) => (
-            <div className="client-card skeleton-card" key={idx}>
-              <div className="client-header">
-                <span className="skeleton circle" />
-                <div className="skeleton lg wide" style={{ width: '70%' }} />
-              </div>
-              <div className="skeleton md wide" style={{ width: '60%' }} />
-              <div className="skeleton sm wide" style={{ width: '42%' }} />
-            </div>
-          ))}
-        </div>
-      )
-    }
-
-    return (
-      <div className="client-list">
-        <div className="client-list__toolbar">
-          <div>
-            <p className="eyebrow">Lista</p>
-            <h2>Ügyfelek</h2>
-          </div>
-          <span className="pill">{filteredClients.length || '...'}</span>
-        </div>
-        <div className="client-list__header">
-          <span>Név</span>
-          <span>Adószám</span>
-          <span>E-mail</span>
-          <span>Kezdés dátuma</span>
-        </div>
-        {Array.from({ length: count }).map((_, idx) => (
-          <div key={idx} className="client-list__row">
-            <span className="client-list__name">
-              <span className="skeleton circle" />
-              <span className="skeleton md wide" style={{ width: '60%' }} />
-            </span>
-            <span className="client-list__tax">
-              <span className="skeleton sm wide" style={{ width: '70%' }} />
-            </span>
-            <span className="client-list__email">
-              <span className="skeleton sm wide" style={{ width: '80%' }} />
-            </span>
-            <span className="client-list__date">
-              <span className="skeleton sm wide" style={{ width: '50%' }} />
-            </span>
-          </div>
-        ))}
-      </div>
-    )
+  const handleSelectClient = (client) => {
+    const tax = client.adoszam
+    const shortTax = tax ? normalizeTaxId(tax) : ''
+    if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
+    else navigate(`/clients/id/${client.id}`)
   }
 
   return (
     <main className="page-container">
-      <header className="section-header">
-        <div className="section-header__top">
-          <div>
-            <p className="eyebrow">Ügyfél törzsadatok</p>
-            <h1 className="section-title">Szinveszt ügyfélkezelő</h1>
-            <p className="section-subtitle">Keresés, importálás, szerkesztés egy helyen.</p>
-          </div>
-          <div className="section-header__actions">
-            <button className="btn ghost" type="button" onClick={() => setShowImportWizard(true)}>
-              <TbUpload /> Excel import (új)
-            </button>
-            <button className="btn ghost" type="button" onClick={() => setShowIncomeImport(true)}>
-              <TbUpload /> Bev?telek import
-            </button>
-            <button className="btn" type="button" onClick={() => setShowFormModal(true)}>
-              <TbUserPlus /> Új ügyfél
-            </button>
-          </div>
-        </div>
-        <div className="metric-bar">
-          <div className="metric-card">
-            <span className="metric-label">Összes ügyfél</span>
-            <span className="metric-value">{clients.length}</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-label">Szűrt lista</span>
-            <span className="metric-value">{filteredClients.length}</span>
-          </div>
-          <StatusBadge ok={status.ok} message={status.message} />
-        </div>
-      </header>
+      <ClientsHeader
+        clientsCount={clients.length}
+        filteredCount={filteredClients.length}
+        status={status}
+        onOpenImportWizard={() => setShowImportWizard(true)}
+        onOpenIncomeImport={() => setShowIncomeImport(true)}
+        onAddClient={() => setShowFormModal(true)}
+      />
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
-      <div className="panel filter-panel">
-        <div className="input-shell search-field wide-search">
-          <input
-            type="search"
-            placeholder="Keresés név vagy adószám alapján..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="filter-bar">
-          <label className="filter-control">
-            <span>Státusz</span>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">Mind</option>
-              <option value="Aktiv">Aktív</option>
-              <option value="Szunetel">Szünetel</option>
-              <option value="Megszunt">Megszűnt</option>
-            </select>
-          </label>
-          <label className="filter-control">
-            <span>Kezdés éve</span>
-            <select value={startYear} onChange={(e) => setStartYear(e.target.value)}>
-              <option value="">Mind</option>
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-control">
-            <span>Kezdés hónapja</span>
-            <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)}>
-              <option value="">Mind</option>
-              {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-control">
-            <span>Rendezés</span>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="name">Név (A-Z)</option>
-              <option value="start-desc">Kezdés dátuma (legújabb)</option>
-              <option value="start-asc">Kezdés dátuma (legrégebbi)</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            className="view-toggle-btn"
-            onClick={() => setViewMode(viewMode === 'cards' ? 'list' : 'cards')}
-            title={viewMode === 'cards' ? 'Váltás listára' : 'Váltás kártyákra'}
-          >
-            <span className="view-toggle-icon" aria-hidden="true">
-              {viewMode === 'cards' ? <TbList /> : <TbLayoutGrid />}
-            </span>
-          </button>
-        </div>
-      </div>
+      <ClientsFilterBar
+        searchTerm={searchTerm}
+        statusFilter={statusFilter}
+        startYear={startYear}
+        startMonth={startMonth}
+        sortBy={sortBy}
+        viewMode={viewMode}
+        availableYears={availableYears}
+        onSearchChange={setSearchTerm}
+        onStatusChange={setStatusFilter}
+        onYearChange={setStartYear}
+        onMonthChange={setStartMonth}
+        onSortChange={setSortBy}
+        onToggleView={toggleViewMode}
+      />
 
       {viewMode === 'cards' ? (
         <section className="content-grid">
           {clientsLoading && !clients.length ? (
-            renderClientSkeletons('cards')
+            <ClientSkeletons variant="cards" />
           ) : (
-            <ClientCards
-              clients={filteredClients}
-              onSelect={(client) => {
-                const tax = client.adoszam
-                const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
-                if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
-                else navigate(`/clients/id/${client.id}`)
-              }}
-            />
+            <ClientCards clients={filteredClients} onSelect={handleSelectClient} />
           )}
         </section>
       ) : (
         <section className="content-grid">
           {clientsLoading && !clients.length ? (
-            renderClientSkeletons('list')
+            <ClientSkeletons variant="list" filteredCount={filteredClients.length} />
           ) : (
-            <div className="client-list">
-              <div className="client-list__toolbar">
-                <div>
-                  <p className="eyebrow">Lista</p>
-                  <h2>Ügyfelek</h2>
-                </div>
-                <span className="pill">{filteredClients.length}</span>
-              </div>
-              <div className="client-list__header">
-                <span>Név</span>
-                <span>Adószám</span>
-                <span>E-mail</span>
-                <span>Kezdés dátuma</span>
-              </div>
-              {filteredClients.map((client) => (
-                <button
-                  key={client.id}
-                  type="button"
-                  className="client-list__row"
-                  onClick={() => {
-                    const tax = client.adoszam
-                    const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
-                    if (shortTax) navigate(`/clients/tax/${encodeURIComponent(shortTax)}`)
-                    else navigate(`/clients/id/${client.id}`)
-                  }}
-                >
-                  <span className="client-list__name">
-                    <span className={statusClass(client.statusz)} aria-hidden="true" /> {client.nev || 'N/A'}
-                  </span>
-                  <span className="client-list__tax">{client.adoszam || '-'}</span>
-                  <span className="client-list__email">{client.email || '-'}</span>
-                  <span className="client-list__date">{formatStartDate(client)}</span>
-                </button>
-              ))}
-              {!filteredClients.length ? (
-                <div className="client-list__empty">Nincs megjeleníthető ügyfél.</div>
-              ) : null}
-            </div>
+            <ClientListView clients={filteredClients} onSelect={handleSelectClient} formatStartDate={formatStartDate} />
           )}
         </section>
       )}
@@ -454,9 +224,7 @@ function ClientsPage({ currentUser }) {
         />
       ) : null}
 
-      {showIncomeImport ? (
-        <IncomesImportModal onClose={() => setShowIncomeImport(false)} clients={clients} />
-      ) : null}
+      {showIncomeImport ? <IncomesImportModal onClose={() => setShowIncomeImport(false)} clients={clients} /> : null}
 
       {ticketClient ? (
         <TicketCreateModal

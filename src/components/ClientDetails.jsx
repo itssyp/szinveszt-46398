@@ -1,8 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { fieldGroups } from '../constants/clientFields'
 import { useNavOnlineConnectionTest } from '../hooks/useNavOnlineConnectionTest'
-import ClientActivityTimeline from './ClientActivityTimeline'
 import useNavInvoices from '../hooks/useNavInvoices'
+import {
+  ActivityTab,
+  GeneralTab,
+  IncomesTab,
+  InvoicesTab,
+  NavTab,
+} from '../features/clients/components/ClientDetailSections'
 
 function formatValue(key, value, fields) {
   const fieldMeta = fields.find((f) => f.key === key)
@@ -22,6 +28,13 @@ function formatValue(key, value, fields) {
     if (typeof value === 'string') return value
   }
   return value || '-'
+}
+
+function formatAmount(amount, currency) {
+  if (amount == null) return '-'
+  const num = Number(amount)
+  if (Number.isNaN(num)) return '-'
+  return `${num.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency || 'HUF'}`
 }
 
 function ClientDetails({
@@ -85,213 +98,34 @@ function ClientDetails({
 
   const generalGroups = fieldGroups.filter((group) => group.title !== 'NAV online számla')
 
-  const formatAmount = (amount, currency) => {
-    if (amount == null) return '-'
-    const num = Number(amount)
-    if (Number.isNaN(num)) return '-'
-    return `${num.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency || 'HUF'}`
-  }
-
   let tabContent = null
   if (activeTab === 'general') {
-    tabContent = generalGroups.map((group) => (
-      <div key={group.title} className="details-section details-section--line">
-        <h3>{group.title}</h3>
-        <div className="details-grid">
-          {group.keys.map((key) => (
-            <div key={key} className="details-item">
-              <span className="details-label">{labels[key] || key}</span>
-              <span className="details-value">{formatValue(key, client[key], fields)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    ))
-  } else if (activeTab === 'nav') {
     tabContent = (
-      <div className="details-section details-section--line">
-        <div className="details-header">
-          <h3>NAV online számla</h3>
-
-          <div className="details-actions inline">
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={navTest.run}
-              disabled={!navTest.canTest || navTest.status === 'running'}
-              title={!navTest.canTest ? 'Hiányzó NAV adatok (felhasználónév, jelszó, aláírókulcs).' : 'NAV kapcsolat teszt'}
-            >
-              {navTest.status === 'running' ? 'Teszt folyamatban.' : 'Kapcsolat teszt'}
-            </button>
-
-            {(navTest.status === 'success' || navTest.status === 'error') && (
-              <button type="button" className="btn ghost" onClick={navTest.reset} title="Eredmény törlése">
-                Reset
-              </button>
-            )}
-          </div>
-        </div>
-
-        {navTest.status === 'success' ? (
-          <div className="details-banner success">
-            NAV kapcsolat OK
-            {navTest.result?.checks ? (
-              <div className="helper-text">
-                {navTest.result.checks.query ? `Lekérdezés: ${navTest.result.checks.query.ok ? 'OK' : 'HIBA'}` : null}
-                {navTest.result.checks.tokenExchange
-                  ? ` TokenExchange: ${navTest.result.checks.tokenExchange.ok ? 'OK' : 'HIBA'}`
-                  : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {navTest.status === 'error' ? (
-          <div className="details-banner error">
-            NAV teszt sikertelen
-            <div className="helper-text">
-              {navTest.error?.errorCode ? (
-                <div>
-                  <b>Kód:</b> {navTest.error.errorCode}
-                </div>
-              ) : null}
-              {navTest.error?.status ? (
-                <div>
-                  <b>HTTP:</b> {navTest.error.status}
-                </div>
-              ) : null}
-              {navTest.error?.message ? (
-                <div>
-                  <b>Üzenet:</b> {navTest.error.message}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="details-grid details-grid-spaced">
-          {navKeys.map((key) => (
-            <div key={key} className="details-item">
-              <span className="details-label">{labels[key] || key}</span>
-              <span className="details-value">{formatValue(key, client[key], fields)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <GeneralTab
+        groups={generalGroups}
+        labels={labels}
+        client={client}
+        fields={fields}
+        formatValue={formatValue}
+      />
     )
+  } else if (activeTab === 'nav') {
+    tabContent = <NavTab labels={labels} client={client} navKeys={navKeys} navTest={navTest} onReset={navTest.reset} />
   } else if (activeTab === 'invoices') {
     tabContent = (
-      <div className="details-section details-section--line">
-        <div className="details-header">
-          <h3>Számlák</h3>
-          <div className="details-actions inline">
-            <label className="filter-control inline-select">
-              <span>Irány</span>
-              <select
-                value={invoiceDirection}
-                onChange={(e) => setInvoiceDirection(e.target.value)}
-                disabled={invoicesQuery.loading}
-              >
-                <option value="OUTBOUND">Kimenő</option>
-                <option value="INBOUND">Bejövő</option>
-              </select>
-            </label>
-            <label className="filter-control inline-select">
-              <span>Dátum -tól</span>
-              <input
-                type="date"
-                value={invoiceRange.from}
-                onChange={(e) => setInvoiceRange((prev) => ({ ...prev, from: e.target.value }))}
-                disabled={invoicesQuery.loading}
-              />
-            </label>
-            <label className="filter-control inline-select">
-              <span>Dátum -ig</span>
-              <input
-                type="date"
-                value={invoiceRange.to}
-                onChange={(e) => setInvoiceRange((prev) => ({ ...prev, to: e.target.value }))}
-                disabled={invoicesQuery.loading}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={invoicesQuery.refresh}
-              disabled={invoicesQuery.loading || !invoicesQuery.hasCreds}
-            >
-              {invoicesQuery.loading ? 'Betöltés...' : 'Frissítés'}
-            </button>
-          </div>
-        </div>
-
-        {!invoicesQuery.hasCreds ? (
-          <div className="details-banner error">
-            Hiányzó NAV adatok (felhasználónév, jelszó, aláírókulcs) a lekérdezéshez.
-          </div>
-        ) : null}
-
-        {invoicesQuery.error ? <div className="details-banner error">Hiba: {invoicesQuery.error}</div> : null}
-
-        <div className="details-grid details-grid-spaced">
-          {invoicesQuery.loading ? (
-            <p className="muted">Számlák betöltése...</p>
-          ) : invoicesQuery.invoices.length ? (
-            invoicesQuery.invoices.map((inv) => (
-              <div key={inv.invoiceNumber || inv.id} className="meta-card">
-                <div className="meta-label">Számlaszám</div>
-                <div className="meta-value emphasis">{inv.invoiceNumber || 'Ismeretlen'}</div>
-                <div className="meta-label">Dátum</div>
-                <div className="meta-value muted">{inv.invoiceIssueDate || inv.insDate || '-'}</div>
-                <div className="meta-label">Partner adószám</div>
-                <div className="meta-value muted">
-                  {invoiceDirection === 'OUTBOUND' ? inv.customerTaxNumber || '-' : inv.supplierTaxNumber || '-'}
-                </div>
-                <div className="meta-label">Bruttó</div>
-                <div className="meta-value">{formatAmount(inv.grossAmountHUF || inv.grossAmount, inv.currency)}</div>
-                <div className="meta-label">Irány</div>
-                <div className="meta-value">{inv.direction || invoiceDirection}</div>
-              </div>
-            ))
-          ) : (
-            <p className="muted">Nincs megjeleníthető számla ebben az időszakban.</p>
-          )}
-        </div>
-      </div>
+      <InvoicesTab
+        invoiceDirection={invoiceDirection}
+        invoiceRange={invoiceRange}
+        setInvoiceDirection={setInvoiceDirection}
+        setInvoiceRange={setInvoiceRange}
+        invoicesQuery={invoicesQuery}
+        formatAmount={formatAmount}
+      />
     )
   } else if (activeTab === 'incomes') {
-    const incomes = Array.isArray(client.monthlyIncomes) ? [...client.monthlyIncomes] : []
-    incomes.sort((a, b) => String(b.month || '').localeCompare(String(a.month || '')))
-    tabContent = (
-      <div className="details-section details-section--line">
-        <div className="details-header">
-          <h3>Bevételek</h3>
-        </div>
-        {!incomes.length ? (
-          <p className="muted">Nincs rögzített bevétel.</p>
-        ) : (
-          <div className="details-grid details-grid-spaced">
-            {incomes.map((row, idx) => (
-              <div key={`${row.month || idx}-${row.amount || 0}`} className="meta-card">
-                <div className="meta-label">Hónap</div>
-                <div className="meta-value emphasis">{row.month || '-'}</div>
-                <div className="meta-label">Összeg</div>
-                <div className="meta-value">{formatAmount(row.amount || 0, 'HUF')}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    tabContent = <IncomesTab client={client} formatAmount={formatAmount} />
   } else {
-    tabContent = (
-      <div className="details-section details-section--line">
-        <div className="details-header">
-          <h3>Aktivitás</h3>
-        </div>
-        {activitiesLoading ? <p className="muted">Betöltés...</p> : <ClientActivityTimeline activities={activities} />}
-      </div>
-    )
+    tabContent = <ActivityTab activitiesLoading={activitiesLoading} activities={activities} />
   }
 
   return (

@@ -6,58 +6,15 @@ import { clientImportSchema, REQUIRED_FIELDS } from '../constants/clientImportSc
 import { buildAutoMapping } from '../utils/columnMatching'
 import { applyMapping, buildColumns, buildErrorCsv } from '../utils/clientImport'
 import { db } from '../firebase'
+import {
+  buildDedupIndexes,
+  classifyActions,
+  headerSignature,
+  loadTemplates,
+  saveTemplates,
+} from '../features/imports/utils/clientImport'
 
-const TEMPLATE_STORAGE_KEY = 'client-import-templates'
 const PREVIEW_LIMIT = 10
-
-const normalizeTax = (value) => (value || '').toString().replace(/\D/g, '')
-const normalizeEmail = (value) => (value || '').toString().trim().toLowerCase()
-const normalizePhone = (value) => (value || '').toString().replace(/[^\d]/g, '')
-
-function loadTemplates() {
-  try {
-    const raw = localStorage.getItem(TEMPLATE_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) return parsed
-  } catch (_e) {
-    // ignore
-  }
-  return []
-}
-
-function saveTemplates(templates) {
-  localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates))
-}
-
-function headerSignature(columns) {
-  return columns.map((c) => c.norm).join('|')
-}
-
-function buildDedupIndexes(clients) {
-  const byTax = new Map()
-  const byEmail = new Map()
-  const byPhone = new Map()
-  clients.forEach((client) => {
-    const tax = normalizeTax(client.adoszam)
-    if (tax) byTax.set(tax, client.id)
-    const email = normalizeEmail(client.email)
-    if (email) byEmail.set(email, client.id)
-    const phone = normalizePhone(client.telefonszam)
-    if (phone) byPhone.set(phone, client.id)
-  })
-  return { byTax, byEmail, byPhone }
-}
-
-function classifyActions(rows, dedup) {
-  return rows.map((row) => {
-    const tax = normalizeTax(row.data.adoszam)
-    const email = normalizeEmail(row.data.email)
-    const phone = normalizePhone(row.data.telefonszam)
-    const existingId = (tax && dedup.byTax.get(tax)) || (email && dedup.byEmail.get(email)) || (phone && dedup.byPhone.get(phone))
-    return { ...row, action: existingId ? 'update' : 'create', targetId: existingId || null }
-  })
-}
 
 function ClientImportWizard({ onClose, clients = [], onComplete }) {
   const [step, setStep] = useState('upload')

@@ -9,8 +9,7 @@ import { useClientsCache } from '../hooks/useClientsCache'
 import { logClientActivity } from '../utils/clientActivity'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { getAliasForEmail } from '../constants/userAliases'
-
-const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
+import { normalizeTaxId } from '../utils/id'
 
 const buildFormDataFromClient = (client) =>
   fieldDefinitions.reduce(
@@ -69,7 +68,7 @@ function ClientEditPage() {
 
   const detailPath = useMemo(() => {
     const tax = client?.adoszam
-    const shortTax = tax ? normalizeId(tax).slice(0, 8) : ''
+    const shortTax = tax ? normalizeTaxId(tax) : ''
     return shortTax ? `/clients/tax/${encodeURIComponent(shortTax)}` : clientId ? `/clients/id/${clientId}` : '/clients'
   }, [client, clientId])
 

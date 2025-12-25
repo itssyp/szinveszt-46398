@@ -11,8 +11,7 @@ import { db } from '../firebase'
 import { logClientActivity } from '../utils/clientActivity'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { getAliasForEmail } from '../constants/userAliases'
-
-const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
+import { normalizeTaxId } from '../utils/id'
 
 function ClientDetailsPage() {
   const { taxNumber, clientId } = useParams()
@@ -46,7 +45,7 @@ function ClientDetailsPage() {
     if (!clientsLoading) {
       let match = null
       if (taxNumber) {
-        match = clients.find((c) => normalizeId(c.adoszam).slice(0, 8) === taxNumber) || null
+        match = clients.find((c) => normalizeTaxId(c.adoszam) === taxNumber) || null
       }
       if (!match && clientId) {
         match = clients.find((c) => c.id === clientId) || null

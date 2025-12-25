@@ -1,208 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getAuth } from 'firebase/auth'
-import { collection, getDocs, writeBatch } from 'firebase/firestore'
-import { db, firebaseApp } from '../firebase'
+import { getDocumentPayments, listDocumentsByStatus, getBillingoStatuses } from '../services/billingoClient'
+import { addToDebtMap, extractPartnerFromDoc, formatAmount, toNumber } from '../utils/debtMapping'
+import { persistDebtsToClients } from '../services/debtPersistence'
 
 // Debug knobs (kept exportable for quick tuning)
 export const DEBUG_LIMIT_PARTNERS = null // set null to show all partners
 export const DEBUG_LIMIT_DOCS_PER_STATUS = null // cap downloaded docs per status in dev; null = no cap
 export const CONCURRENCY_PAYMENTS = 6 // payment history calls for partially_paid docs
 
-const STATUSES = ['expired']
-const PER_PAGE = 100
+const STATUSES = getBillingoStatuses()
 
-// Proxy base
-const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'szinveszt-46398'
-const FUNCTIONS_REGION = import.meta.env.VITE_FUNCTIONS_REGION || 'europe-west3'
-const EMULATOR_HOST = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || 'http://127.0.0.1:5001'
-
-const defaultFunctionsBase = import.meta.env.DEV
-  ? `${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}/billingoProxy`
-  : `https://${FUNCTIONS_REGION}-${PROJECT_ID}.cloudfunctions.net/billingoProxy`
-
-const API_BASE = (import.meta.env.VITE_BILLINGO_BASE_URL || defaultFunctionsBase).replace(/\/$/, '')
-
-const buildUrl = (endpoint) => {
-  const cleanEndpoint = String(endpoint || '').replace(/^\/+/, '')
-  return API_BASE.startsWith('http')
-    ? new URL(`${API_BASE}/${cleanEndpoint}`)
-    : new URL(`${API_BASE}/${cleanEndpoint}`, window.location.origin)
-}
-
-const toNumber = (x) => {
-  const n = Number(x)
-  return Number.isFinite(n) ? n : 0
-}
-
-const normalizeTaxcode = (value) => (value || '').toString().replace(/\D/g, '')
-const normalizeEmail = (value) => (value || '').toString().trim().toLowerCase()
-
-export const formatAmount = (value) => `${Math.round(toNumber(value)).toLocaleString('en-US')} Ft`
-
-const getLastPage = (payload) => Number(payload?.last_page ?? 1) || 1
-
-async function buildAuthHeaders() {
-  const auth = getAuth(firebaseApp)
-  const user = auth.currentUser
-  if (!user) {
-    throw new Error('Nincs bejelentkezve')
-  }
-  const idToken = await user.getIdToken()
-  return {
-    Authorization: `Bearer ${idToken}`,
-  }
-}
-
-async function billingFetch(endpoint, params = {}, signal) {
-  const url = buildUrl(endpoint)
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') url.searchParams.append(k, v)
-  })
-
-  const headers = await buildAuthHeaders()
-
-  const res = await fetch(url.toString(), {
-    signal,
-    headers,
-  })
-  const text = await res.text()
-  if (!res.ok) throw new Error(text || `Billingo válasz: ${res.status}`)
-  return JSON.parse(text)
-}
-
-async function listDocumentsByStatus(payment_status, signal, onPage) {
-  let page = 1
-  let lastPage = 1
-  let out = []
-
-  while (page <= lastPage) {
-    const data = await billingFetch(
-      'documents',
-      {
-        page,
-        per_page: PER_PAGE,
-        type: 'invoice',
-        payment_status,
-      },
-      signal
-    )
-
-    const items = data?.data || []
-    out.push(...items)
-
-    onPage?.({
-      status: payment_status,
-      page,
-      lastPage: getLastPage(data),
-      got: items.length,
-      totalSoFar: out.length,
-    })
-
-    lastPage = getLastPage(data)
-    page++
-
-    if (DEBUG_LIMIT_DOCS_PER_STATUS && out.length >= DEBUG_LIMIT_DOCS_PER_STATUS) {
-      out = out.slice(0, DEBUG_LIMIT_DOCS_PER_STATUS)
-      break
-    }
-  }
-
-  return out
-}
-
-async function getDocumentPayments(documentId, signal) {
-  const data = await billingFetch(`documents/${documentId}/payments`, {}, signal)
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.data)) return data.data
-  return []
-}
-
-function extractPartnerFromDoc(doc) {
-  const p = doc?.document_partner || doc?.partner || null
-  if (!p?.id) return null
-  const emails = Array.isArray(p.emails) ? p.emails : []
-  return {
-    id: p.id,
-    name: p.name || '',
-    email: emails[0] || '',
-    taxcode: p.taxcode || p.tax_code || '',
-  }
-}
-
-function addToDebtMap(map, partner, amount, invoiceCountInc = 1) {
-  if (!partner?.id) return
-  const prev = map.get(partner.id) || {
-    id: partner.id,
-    name: partner.name || '',
-    email: partner.email || '',
-    taxcode: partner.taxcode || '',
-    debt: 0,
-    invoiceCount: 0,
-  }
-
-  map.set(partner.id, {
-    ...prev,
-    email: prev.email || partner.email || '',
-    name: prev.name || partner.name || '',
-    taxcode: prev.taxcode || partner.taxcode || '',
-    debt: toNumber(prev.debt) + toNumber(amount),
-    invoiceCount: (prev.invoiceCount || 0) + invoiceCountInc,
-  })
-}
-
-async function persistDebtsToClients({ debts, runIdRef, runId }) {
-  if (runIdRef.current !== runId) return 0
-  try {
-    const snap = await getDocs(collection(db, 'clients'))
-    const byTax = new Map()
-    const byEmail = new Map()
-
-    snap.forEach((docSnap) => {
-      const tax = normalizeTaxcode(docSnap.data()?.adoszam)
-      if (tax) byTax.set(tax, docSnap.ref)
-      const email = normalizeEmail(docSnap.data()?.email)
-      if (email) byEmail.set(email, docSnap.ref)
-    })
-
-    const now = new Date()
-    const MAX_PER_BATCH = 450
-    let batch = writeBatch(db)
-    let batchCount = 0
-    let totalUpdates = 0
-    const commits = []
-
-    debts.forEach((row) => {
-      if (runIdRef.current !== runId) return
-      const tax = normalizeTaxcode(row.taxcode)
-      const email = normalizeEmail(row.email)
-      const ref = (tax && byTax.get(tax)) || (email && byEmail.get(email))
-      if (!ref) return
-
-      batch.update(ref, {
-        billingoDebt: toNumber(row.debt),
-        billingoDebtInvoices: row.invoiceCount || 0,
-        billingoDebtPartnerId: row.id || '',
-        billingoDebtUpdatedAt: now,
-      })
-
-      batchCount++
-      totalUpdates++
-
-      if (batchCount >= MAX_PER_BATCH) {
-        commits.push(batch.commit())
-        batch = writeBatch(db)
-        batchCount = 0
-      }
-    })
-
-    if (batchCount > 0) commits.push(batch.commit())
-    if (commits.length) await Promise.all(commits)
-    return totalUpdates
-  } catch (_e) {
-    // Persistence is best-effort; don't fail the UI if caching fails.
-    return 0
-  }
-}
+export { formatAmount }
 
 export function useDebtsData({ autoLoad = true } = {}) {
   const [rows, setRows] = useState([])
@@ -262,7 +70,12 @@ export function useDebtsData({ autoLoad = true } = {}) {
           }
         )
 
-        docsByStatus[status] = docs
+        const limitedDocs =
+          DEBUG_LIMIT_DOCS_PER_STATUS && docs.length > DEBUG_LIMIT_DOCS_PER_STATUS
+            ? docs.slice(0, DEBUG_LIMIT_DOCS_PER_STATUS)
+            : docs
+
+        docsByStatus[status] = limitedDocs
       }
 
       if (runIdRef.current !== myRunId) return
