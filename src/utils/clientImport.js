@@ -43,12 +43,88 @@ export function buildColumns(rows, headerRowIndex = 0) {
   })
 }
 
+const MONTH_ALIASES = {
+  jan: '01',
+  január: '01',
+  januar: '01',
+  feb: '02',
+  február: '02',
+  februar: '02',
+  mar: '03',
+  március: '03',
+  marcius: '03',
+  ápr: '04',
+  apr: '04',
+  április: '04',
+  aprilis: '04',
+  may: '05',
+  május: '05',
+  majus: '05',
+  jun: '06',
+  június: '06',
+  junius: '06',
+  jul: '07',
+  július: '07',
+  julius: '07',
+  aug: '08',
+  augusztus: '08',
+  sep: '09',
+  szeptember: '09',
+  okt: '10',
+  október: '10',
+  oktober: '10',
+  nov: '11',
+  november: '11',
+  dec: '12',
+  december: '12',
+}
+
+function normalizeMonthHeader(text) {
+  if (!text) return null
+  const norm = headerNorm(String(text))
+  // direct YYYY-MM or YYYY.MM or YYYY/MM
+  const direct = norm.match(/(20\d{2})[\s\.\-\/]?(\d{1,2})/)
+  if (direct) {
+    const year = direct[1]
+    const month = direct[2].padStart(2, '0')
+    return `${year}-${month}`
+  }
+  // month name + optional year
+  const parts = norm.split(/[\s\.\-_/]+/).filter(Boolean)
+  if (!parts.length) return null
+  let year = parts.find((p) => /^20\d{2}$/.test(p)) || ''
+  let month = ''
+  for (const p of parts) {
+    if (MONTH_ALIASES[p]) {
+      month = MONTH_ALIASES[p]
+      break
+    }
+  }
+  if (month) {
+    if (!year) year = String(new Date().getFullYear())
+    return `${year}-${month}`
+  }
+  return null
+}
+
+const toNumber = (value) => {
+  if (value === undefined || value === null) return NaN
+  if (typeof value === 'number') return value
+  const cleaned = String(value).replace(/\s+/g, '').replace(/[^0-9\-,\.]/g, '').replace(',', '.')
+  const num = Number(cleaned)
+  return Number.isFinite(num) ? num : NaN
+}
+
 export function applyMapping(rows, mapping, columns, { headerRowIndex = 0 } = {}) {
   const dataStart = headerRowIndex + 1
   const fieldByKey = clientImportSchema.reduce((acc, f) => ({ ...acc, [f.key]: f }), {})
   const normalizedRows = []
   const validRows = []
   const invalidRows = []
+
+  const monthColumns = columns
+    .map((col) => ({ col, month: normalizeMonthHeader(col.header) }))
+    .filter((entry) => entry.month)
 
   for (let i = dataStart; i < rows.length; i += 1) {
     const row = rows[i] || []
@@ -72,6 +148,18 @@ export function applyMapping(rows, mapping, columns, { headerRowIndex = 0 } = {}
         errors.push(`${field.label}: Kötelező mező hiányzik`)
       }
     })
+
+    // Collect monthly incomes from detected month columns
+    const incomes = []
+    monthColumns.forEach(({ col, month }) => {
+      const raw = row[col.index]
+      const amount = toNumber(raw)
+      if (!Number.isFinite(amount) || amount === 0) return
+      incomes.push({ month, amount })
+    })
+    if (incomes.length) {
+      out.monthlyIncomes = incomes
+    }
 
     const entry = { rowNumber: i + 1, data: out, errors }
     normalizedRows.push(entry)

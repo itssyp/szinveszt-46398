@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { getAuth } from 'firebase/auth'
+import { firebaseApp } from '../firebase'
 
 function pickNavPayload(client) {
   return {
@@ -13,7 +15,34 @@ function pickNavPayload(client) {
   }
 }
 
-export function useNavOnlineConnectionTest({ client, endpoint = '/navProxy/test-connection' }) {
+const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'szinveszt-46398'
+const FUNCTIONS_REGION = import.meta.env.VITE_FUNCTIONS_REGION || 'europe-west3'
+const EMULATOR_HOST = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || 'http://127.0.0.1:5001'
+
+const defaultFunctionsBase = import.meta.env.DEV
+  ? `${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}/navProxy`
+  : `https://${FUNCTIONS_REGION}-${PROJECT_ID}.cloudfunctions.net/navProxy`
+
+const API_BASE = (import.meta.env.VITE_NAV_PROXY_BASE_URL || defaultFunctionsBase).replace(/\/$/, '')
+
+const buildUrl = (endpoint) => {
+  const cleanEndpoint = String(endpoint || '').replace(/^\/+/, '')
+  return API_BASE.startsWith('http')
+    ? new URL(`${API_BASE}/${cleanEndpoint}`)
+    : new URL(`${API_BASE}/${cleanEndpoint}`, window.location.origin)
+}
+
+async function buildAuthHeaders() {
+  const auth = getAuth(firebaseApp)
+  const user = auth.currentUser
+  if (!user) return {}
+  const idToken = await user.getIdToken()
+  return {
+    Authorization: `Bearer ${idToken}`,
+  }
+}
+
+export function useNavOnlineConnectionTest({ client, endpoint = 'test-connection' }) {
   const [status, setStatus] = useState('idle') // idle | running | success | error
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
@@ -46,9 +75,14 @@ export function useNavOnlineConnectionTest({ client, endpoint = '/navProxy/test-
     setResult(null)
 
     try {
-      const res = await fetch(endpoint, {
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(await buildAuthHeaders()),
+      }
+      const url = buildUrl(endpoint)
+      const res = await fetch(url.toString(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         signal: ac.signal,
         body: JSON.stringify({
           clientId: client.id || client.clientId || null, // optional

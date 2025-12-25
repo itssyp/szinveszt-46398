@@ -58,6 +58,10 @@ if (!admin.apps.length) {
 }
 
 async function requireFirebaseAuthOrAppCheck(req, res, next) {
+  // In emulator we allow requests without auth/app check to simplify local testing.
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
+  const allowUnauthenticated = isEmulator
+
   try {
     const authHeader = req.headers.authorization || '';
     const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -75,6 +79,10 @@ async function requireFirebaseAuthOrAppCheck(req, res, next) {
     }
 
     if (!decodedIdToken && !decodedAppCheck) {
+      if (allowUnauthenticated) {
+        // Local emulator: continue without verification to enable manual testing.
+        return next();
+      }
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -247,6 +255,19 @@ function extractNavError(xml) {
   const message = xml.match(/<message>([^<]+)<\/message>/)?.[1] || null;
   const funcCode = xml.match(/<funcCode>([^<]+)<\/funcCode>/)?.[1] || null;
   return { funcCode, errorCode, message };
+}
+
+function extractAvailablePage(xml) {
+  const m = xml.match(/<(?:(?:\w+:)?availablePage)>(\d+)<\/(?:(?:\w+:)?availablePage)>/);
+  return m ? parseInt(m[1], 10) : 1;
+}
+
+function extractTagValues(xml, tagName) {
+  const re = new RegExp(`<((?:\\w+:)?${tagName})>([\\s\\S]*?)<\\/\\1>`, 'g');
+  const out = [];
+  let m;
+  while ((m = re.exec(xml)) !== null) out.push(m[2]);
+  return out;
 }
 
 function resolveNavBaseUrl(env) {
@@ -480,6 +501,106 @@ navApp.post('/test-connection', async (req, res) => {
     });
   } catch (err) {
     console.error('[nav] test-connection error:', err?.message || err);
+    res.status(500).json({
+      ok: false,
+      errorCode: 'NAV_PROXY_ERROR',
+      message: err?.message || 'NAV proxy hiba',
+    });
+  }
+});
+
+// POST /navProxy/list-invoices (proxy to NAV queryInvoiceDigest)
+navApp.post('/list-invoices', async (req, res) => {
+  try {
+    const nav = req.body?.nav || {};
+    const env = (req.body?.env || 'prod').toLowerCase();
+    const invoiceDirection = (req.body?.direction || 'OUTBOUND').toUpperCase();
+    const dateFrom = req.body?.dateFrom;
+    const dateTo = req.body?.dateTo;
+
+    if (!nav.navOnlineUser || !nav.navOnlinePassword || !nav.navOnlineSignerKey) {
+      res.status(400).json({
+        ok: false,
+        errorCode: 'MISSING_FIELDS',
+        message: 'Hiányzó NAV adatok: felhasználónév, jelszó, aláírókulcs kötelező.',
+      });
+      return;
+    }
+    if (!nav.taxNumber || !/^\d{8}$/.test(String(nav.taxNumber))) {
+      res.status(400).json({
+        ok: false,
+        errorCode: 'INVALID_TAXNUMBER',
+        message: 'A taxNumber mezőnek pontosan 8 számjegynek kell lennie (adószám első 8 jegye).',
+      });
+      return;
+    }
+    if (!dateFrom || !dateTo) {
+      res.status(400).json({
+        ok: false,
+        errorCode: 'MISSING_DATES',
+        message: 'dateFrom és dateTo kötelező.',
+      });
+      return;
+    }
+
+    const baseUrl = resolveNavBaseUrl(env);
+
+    const invoices = [];
+    let page = 1;
+    let availablePage = 1;
+
+    while (page <= availablePage) {
+      const xml = buildQueryInvoiceDigestXmlUsingInsDate({
+        nav,
+        invoiceDirection,
+        dateFrom,
+        dateTo,
+        page,
+      });
+
+      const r = await navPostXml(baseUrl, '/queryInvoiceDigest', xml);
+      const xmlBody = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+
+      if (page === 1) {
+        availablePage = extractAvailablePage(xmlBody);
+      }
+
+      if (r.status !== 200) {
+        const err = extractNavError(xmlBody);
+        res.status(200).json({
+          ok: false,
+          errorCode: err?.errorCode || 'NAV_QUERY_FAILED',
+          message: err?.message || `NAV hiba (HTTP ${r.status})`,
+          details: { status: r.status, ...err },
+        });
+        return;
+      }
+
+      const invoiceNumbers = extractTagValues(xmlBody, 'invoiceNumber');
+      const issueDates = extractTagValues(xmlBody, 'invoiceIssueDate');
+      const customerTaxNumbers = extractTagValues(xmlBody, 'customerTaxNumber');
+      const supplierTaxNumbers = extractTagValues(xmlBody, 'supplierTaxNumber');
+      const grossAmounts = extractTagValues(xmlBody, 'invoiceGrossAmountHUF');
+      const currencies = extractTagValues(xmlBody, 'invoiceCurrency');
+
+      invoiceNumbers.forEach((num, idx) => {
+        invoices.push({
+          invoiceNumber: num,
+          invoiceIssueDate: issueDates[idx] || null,
+          customerTaxNumber: customerTaxNumbers[idx] || null,
+          supplierTaxNumber: supplierTaxNumbers[idx] || null,
+          grossAmountHUF: Number(grossAmounts[idx]) || null,
+          currency: currencies[idx] || 'HUF',
+          direction: invoiceDirection,
+        });
+      });
+
+      page += 1;
+    }
+
+    res.status(200).json({ ok: true, invoices });
+  } catch (err) {
+    console.error('[nav] list-invoices error:', err?.message || err);
     res.status(500).json({
       ok: false,
       errorCode: 'NAV_PROXY_ERROR',

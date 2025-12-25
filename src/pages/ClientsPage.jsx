@@ -19,6 +19,7 @@ import TicketCreateModal from '../components/TicketCreateModal'
 import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import ClientImportWizard from '../components/ClientImportWizard'
+import IncomesImportModal from '../components/IncomesImportModal'
 import { logClientActivity } from '../utils/clientActivity'
 
 const normalizeId = (value) => (value || '').toString().replace(/\D/g, '')
@@ -43,6 +44,7 @@ function ClientsPage({ currentUser }) {
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
   const [showImportWizard, setShowImportWizard] = useState(false)
+  const [showIncomeImport, setShowIncomeImport] = useState(false)
   const navigate = useNavigate()
 
   const existingIds = useMemo(() => {
@@ -277,6 +279,9 @@ function ClientsPage({ currentUser }) {
             <button className="btn ghost" type="button" onClick={() => setShowImportWizard(true)}>
               <TbUpload /> Excel import (új)
             </button>
+            <button className="btn ghost" type="button" onClick={() => setShowIncomeImport(true)}>
+              <TbUpload /> Bev?telek import
+            </button>
             <button className="btn" type="button" onClick={() => setShowFormModal(true)}>
               <TbUserPlus /> Új ügyfél
             </button>
@@ -447,6 +452,10 @@ function ClientsPage({ currentUser }) {
             })
           }
         />
+      ) : null}
+
+      {showIncomeImport ? (
+        <IncomesImportModal onClose={() => setShowIncomeImport(false)} clients={clients} />
       ) : null}
 
       {ticketClient ? (

@@ -141,6 +141,8 @@ export const emptyClient = fieldDefinitions.reduce((acc, field) => {
     acc[field.key] = false
   } else if (field.type === 'multiselect') {
     acc[field.key] = []
+  } else if (field.key === 'monthlyIncomes') {
+    acc[field.key] = []
   } else {
     acc[field.key] = ''
   }

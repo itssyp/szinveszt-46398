@@ -405,6 +405,7 @@ const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT)
                     {clientImportSchema.map((f) => (
                       <th key={f.key}>{f.label}</th>
                     ))}
+                    <th>Havi bevételek</th>
                     <th>Művelet</th>
                   </tr>
                 </thead>
@@ -418,6 +419,13 @@ const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT)
                       {clientImportSchema.map((f) => (
                         <td key={f.key}>{String(row.data[f.key] || '')}</td>
                       ))}
+                      <td>
+                        {Array.isArray(row.data.monthlyIncomes) && row.data.monthlyIncomes.length
+                          ? row.data.monthlyIncomes
+                              .map((m) => `${m.month}: ${m.amount}`)
+                              .join(', ')
+                          : ''}
+                      </td>
                       <td>{row.action === 'update' ? 'Frissítés' : 'Létrehozás'}</td>
                     </tr>
                   ))}
