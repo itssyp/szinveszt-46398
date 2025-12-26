@@ -1,35 +1,47 @@
-﻿import React, { useEffect, useMemo, useState } from 'react'
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import React, { useEffect, useMemo, useState } from 'react'
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import './style.css'
 import ClientsPage from './pages/ClientsPage'
 import TicketsPage from './pages/TicketsPage'
 import DebtsPage from './pages/DebtsPage'
 import ClientDetailsPage from './pages/ClientDetailsPage'
 import ClientEditPage from './pages/ClientEditPage'
+import ProfilePage from './pages/ProfilePage.jsx'
+import ClientSchemaPage from './pages/ClientSchemaPage.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
+import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
+import { ClientSchemaProvider } from './hooks/useClientSchema.jsx'
 import Login from './components/Login'
-import { getAliasForEmail } from './constants/userAliases'
 
 function AppShell() {
-  const { user, authReady, authError, signIn, signOut, signingIn } = useAuth()
-  const [currentUser, setCurrentUser] = useState('')
+  const { user, authReady, authError, signIn, signingIn } = useAuth()
+  const {
+    profile,
+    profileLoading,
+    profileError,
+    avatarLetter,
+    primaryColor,
+    profiles,
+  } = useUserProfile()
+  const location = useLocation()
+  const [clientMenuOpen, setClientMenuOpen] = useState(false)
+  const clientsSectionActive =
+    location.pathname.startsWith('/clients') || location.pathname.startsWith('/client-schema')
 
   const displayName = useMemo(() => {
+    if (profile?.username) return profile.username
     if (user?.displayName) return user.displayName
-    if (user?.email) return getAliasForEmail(user.email)
-    return currentUser || 'Felhasználó'
-  }, [user, currentUser])
+    if (user?.email) return user.email.split('@')[0]
+    return 'Felhasználó'
+  }, [user, profile])
+
+  const waitingForProfile = Boolean(user) && profileLoading
 
   useEffect(() => {
-    if (user) {
-      const next = user.displayName || getAliasForEmail(user.email) || ''
-      setCurrentUser(next)
-    } else {
-      setCurrentUser('')
-    }
-  }, [user])
+    setClientMenuOpen(false)
+  }, [location.pathname])
 
-  if (!authReady) {
+  if (!authReady || waitingForProfile) {
     return (
       <div className="page-container">
         <div className="panel">
@@ -45,58 +57,101 @@ function AppShell() {
   }
 
   return (
-    <BrowserRouter>
-      <div className="app-shell">
-        <nav className="app-bar">
-          <div className="app-brand">
-            <img src="/szinveszt-logo.png" alt="Szinveszt" className="app-brand__logo" />
-            <span>SZINVESZT</span>
-          </div>
-          <div className="nav-links">
-            <NavLink to="/clients" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+    <div className="app-shell">
+      <nav className="app-bar">
+        <div className="app-brand">
+          <img src="/szinveszt-logo.png" alt="Szinveszt" className="app-brand__logo" />
+          <span>SZINVESZT</span>
+        </div>
+        <div className="nav-links">
+          <div
+            className={`nav-dropdown${clientsSectionActive ? ' active' : ''}`}
+            onMouseLeave={() => setClientMenuOpen(false)}
+          >
+            <button
+              className={`nav-link nav-dropdown__toggle${clientsSectionActive ? ' active' : ''}`}
+              type="button"
+              onClick={() => setClientMenuOpen((v) => !v)}
+            >
               Ügyfelek
-            </NavLink>
-            <NavLink
-              to="/tickets"
-              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-            >
-              Ticketek
-            </NavLink>
-            <NavLink
-              to="/debts"
-              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-            >
-              Kintlévőségek
-            </NavLink>
+            </button>
+            <div className={`nav-dropdown__menu${clientMenuOpen ? ' is-open' : ''}`}>
+              <NavLink
+                to="/clients"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setClientMenuOpen(false)}
+              >
+                Ügyfelek lista
+              </NavLink>
+              <NavLink
+                to="/client-schema"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setClientMenuOpen(false)}
+              >
+                Séma szerkesztő
+              </NavLink>
+            </div>
           </div>
-          <div className="nav-controls">
-            <div className="user-select">
+          <NavLink
+            to="/tickets"
+            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+          >
+            Ticketek
+          </NavLink>
+          <NavLink
+            to="/debts"
+            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+          >
+            Kintlévőségek
+          </NavLink>
+        </div>
+        <div className="nav-controls">
+          <NavLink
+            to="/profile"
+            className={({ isActive }) => `user-select nav-user-link${isActive ? ' active' : ''}`}
+          >
+            <div className="user-avatar" style={{ backgroundColor: primaryColor }}>
+              {avatarLetter}
+            </div>
+            <div className="user-labels">
               <span>Belépve:</span>
               <strong>{displayName}</strong>
             </div>
-            <button className="btn ghost" type="button" onClick={signOut}>
-              Kilépés
-            </button>
-          </div>
-        </nav>
-        <Routes>
-          <Route path="/" element={<Navigate to="/clients" replace />} />
-          <Route path="/clients" element={<ClientsPage currentUser={displayName} />} />
-          <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
-          <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
-          <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />
-          <Route path="/tickets" element={<TicketsPage currentUser={displayName} />} />
-          <Route path="/debts" element={<DebtsPage />} />
-        </Routes>
-      </div>
-    </BrowserRouter>
+          </NavLink>
+        </div>
+      </nav>
+      <Routes>
+        <Route path="/" element={<Navigate to="/clients" replace />} />
+        <Route
+          path="/clients"
+          element={<ClientsPage currentUser={displayName} userProfiles={profiles || []} />}
+        />
+        <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
+        <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
+        <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />
+        <Route
+          path="/tickets"
+          element={<TicketsPage currentUser={displayName} userProfiles={profiles || []} />}
+        />
+        <Route path="/debts" element={<DebtsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/client-schema" element={<ClientSchemaPage />} />
+      </Routes>
+      {profileError ? <div className="banner banner-error top-banner">Hiba: {profileError}</div> : null}
+    </div>
   )
 }
 
 function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <UserProfileProvider>
+        <ClientSchemaProvider>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </ClientSchemaProvider>
+      </UserProfileProvider>
     </AuthProvider>
   )
 }

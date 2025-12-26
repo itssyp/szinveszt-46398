@@ -1,4 +1,4 @@
-import { fieldDefinitions } from './clientFields'
+import { defaultFieldDefinitions } from './clientFields'
 
 const baseNormalizer = (value) => {
   if (value === undefined || value === null) return ''
@@ -94,7 +94,7 @@ const typeValidators = {
   telefonszam: phoneValidator,
 }
 
-export const clientImportSchema = fieldDefinitions.map((field) => {
+export const clientImportSchema = defaultFieldDefinitions.map((field) => {
   const normalizer = typeNormalizers[field.type] || baseNormalizer
   const validators = []
   if (field.key === 'nev') validators.push(requiredValidator)

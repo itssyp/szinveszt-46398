@@ -4,15 +4,15 @@ import { TbArrowLeft } from 'react-icons/tb'
 import { doc, updateDoc } from 'firebase/firestore'
 import ClientForm from '../components/ClientForm'
 import { db } from '../firebase'
-import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import { logClientActivity } from '../utils/clientActivity'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { getAliasForEmail } from '../constants/userAliases'
+import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { normalizeTaxId } from '../utils/id'
+import { useClientSchema } from '../hooks/useClientSchema.jsx'
 
-const buildFormDataFromClient = (client) =>
-  fieldDefinitions.reduce(
+const buildFormDataFromClient = (client, fields) =>
+  fields.reduce(
     (acc, field) => {
       const current = client?.[field.key]
       if (field.type === 'boolean') {
@@ -20,7 +20,7 @@ const buildFormDataFromClient = (client) =>
           typeof current === 'boolean'
             ? current
             : typeof current === 'string'
-              ? ['true', '1', 'active', 'aktiv', 'aktív'].includes(current.toLowerCase())
+              ? ['true', '1', 'active', 'aktiv'].includes(current.toLowerCase())
               : false
         acc[field.key] = normalized
       } else if (field.type === 'multiselect') {
@@ -48,19 +48,21 @@ const buildFormDataFromClient = (client) =>
       }
       return acc
     },
-    { ...emptyClient }
+    fields.reduce((base, f) => ({ ...base, [f.key]: f.type === 'boolean' ? false : f.type === 'multiselect' ? [] : '' }), {})
   )
 
 function ClientEditPage() {
   const { clientId } = useParams()
   const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
-  const [formData, setFormData] = useState(emptyClient)
-  const [pristineData, setPristineData] = useState(emptyClient)
+  const { fields, groups, emptyClientTemplate, loading: schemaLoading, error: schemaError } = useClientSchema()
+  const [formData, setFormData] = useState(emptyClientTemplate)
+  const [pristineData, setPristineData] = useState(emptyClientTemplate)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [formInitialized, setFormInitialized] = useState(false)
   const { user } = useAuth()
+  const { profile } = useUserProfile()
   const [showConfirmLeave, setShowConfirmLeave] = useState(false)
   const [pendingNav, setPendingNav] = useState(null)
 
@@ -73,26 +75,25 @@ function ClientEditPage() {
   }, [client, clientId])
 
   const actorName = useMemo(() => {
+    if (profile?.username) return profile.username
     if (user?.displayName) return user.displayName
-    if (user?.email) return getAliasForEmail(user.email)
+    if (user?.email) return user.email.split('@')[0]
     return 'Ismeretlen'
-  }, [user])
+  }, [user, profile])
 
   useEffect(() => {
     if (clientsError) setError(clientsError)
-  }, [clientsError])
+    if (schemaError) setError(schemaError)
+  }, [clientsError, schemaError])
 
   useEffect(() => {
-    if (client && !formInitialized) {
-      const built = buildFormDataFromClient(client)
-      setFormData(built)
-      setPristineData(built)
-      setFormInitialized(true)
-      setError('')
-    } else if (!client && !clientsLoading && !clientsError) {
-      setError('Nem található ügyfél.')
-    }
-  }, [client, clientsLoading, clientsError, formInitialized])
+    if (!client || !fields.length || formInitialized) return
+    const built = buildFormDataFromClient(client, fields)
+    setFormData(built)
+    setPristineData(built)
+    setFormInitialized(true)
+    setError('')
+  }, [client, fields, formInitialized])
 
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
@@ -136,7 +137,7 @@ function ClientEditPage() {
         navigate(detailPath)
       }
     } catch (err) {
-      setError(err.message || 'Mentési hiba')
+      setError(err.message || 'Mentesi hiba')
     } finally {
       setSaving(false)
       setShowConfirmLeave(false)
@@ -156,27 +157,29 @@ function ClientEditPage() {
             <TbArrowLeft />
           </button>
           <div className="section-header__intro">
-            <p className="eyebrow">Ügyfél</p>
-            <h1 className="section-title">{client?.nev || 'Ügyfél szerkesztése'}</h1>
-            <p className="section-subtitle">Adatok szerkesztése</p>
+            <p className="eyebrow">Ugyfel</p>
+            <h1 className="section-title">{client?.nev || 'Ugyfel szerkesztese'}</h1>
+            <p className="section-subtitle">Adatok szerkesztese</p>
           </div>
         </div>
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+      {schemaLoading && !formInitialized ? <div className="banner">Sema betoltese...</div> : null}
 
       <section className="panel">
-        {clientsLoading && !formInitialized ? <div className="banner">Betöltés...</div> : null}
+        {clientsLoading && !formInitialized ? <div className="banner">Betoltes...</div> : null}
 
         {client ? (
           <ClientForm
-            fields={fieldDefinitions}
+            fields={fields}
+            groups={groups}
             formData={formData}
             onChange={handleChange}
             onSubmit={handleSubmit}
             onReset={() => requestNavigate(detailPath)}
             editingId={clientId}
-            saving={saving}
+            saving={saving || schemaLoading}
           />
         ) : null}
       </section>
@@ -185,13 +188,13 @@ function ClientEditPage() {
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
             <header className="modal-header">
-              <h2>Változások mentése?</h2>
+              <h2>Valtozasok mentese?</h2>
             </header>
             <div className="modal-body">
-              <p>Nem mentett módosításaid vannak. Mit szeretnél tenni?</p>
+              <p>Nem mentett modositasaid vannak. Mit szeretnel tenni?</p>
               <div className="form-actions">
                 <button className="btn" type="button" onClick={handleSubmit} disabled={saving}>
-                  Mentés
+                  Mentes
                 </button>
                 <button
                   className="btn ghost"
@@ -202,7 +205,7 @@ function ClientEditPage() {
                   }}
                   disabled={saving}
                 >
-                  Mégse
+                  Megse
                 </button>
                 <button
                   className="btn ghost"
@@ -213,7 +216,7 @@ function ClientEditPage() {
                   }}
                   disabled={saving}
                 >
-                  Elvetés
+                  Elvetes
                 </button>
               </div>
             </div>

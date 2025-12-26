@@ -3,20 +3,30 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { TbArrowLeft } from 'react-icons/tb'
 import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore'
 import ClientDetails from '../components/ClientDetails'
-import { fieldDefinitions } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import { useClientActivities } from '../hooks/useClientActivities'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { db } from '../firebase'
 import { logClientActivity } from '../utils/clientActivity'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { getAliasForEmail } from '../constants/userAliases'
+import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { normalizeTaxId } from '../utils/id'
+import { useClientSchema } from '../hooks/useClientSchema.jsx'
+
+const NAV_KEYS = [
+  'navOnlineActive',
+  'navOnlineUser',
+  'navOnlinePassword',
+  'navOnlineSignerKey',
+  'navOnlineExchangeKey',
+  'navOnlineStartDate',
+]
 
 function ClientDetailsPage() {
   const { taxNumber, clientId } = useParams()
   const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
+  const { fields, groups, loading: schemaLoading, error: schemaError } = useClientSchema()
   const [client, setClient] = useState(null)
   const [docId, setDocId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -29,20 +39,22 @@ function ClientDetailsPage() {
   const [ticketCount, setTicketCount] = useState(0)
   const { activities, loading: activitiesLoading } = useClientActivities(docId)
   const { user } = useAuth()
+  const { profile, profiles } = useUserProfile()
 
   const actorName = useMemo(() => {
+    if (profile?.username) return profile.username
     if (user?.displayName) return user.displayName
-    if (user?.email) return getAliasForEmail(user.email)
+    if (user?.email) return user.email.split('@')[0]
     return 'Ismeretlen'
-  }, [user])
+  }, [user, profile])
 
   useEffect(() => {
-    if (clientsError) {
-      setError(clientsError)
+    if (clientsError || schemaError) {
+      setError(clientsError || schemaError)
       setLoading(false)
       return
     }
-    if (!clientsLoading) {
+    if (!clientsLoading && !schemaLoading) {
       let match = null
       if (taxNumber) {
         match = clients.find((c) => normalizeTaxId(c.adoszam) === taxNumber) || null
@@ -56,11 +68,11 @@ function ClientDetailsPage() {
         setError('')
       } else {
         setClient(null)
-        setError('Nem található ügyfél.')
+        setError('Nem talalhato ugyfel.')
       }
       setLoading(false)
     }
-  }, [clients, clientsLoading, clientsError, taxNumber, clientId])
+  }, [clients, clientsLoading, clientsError, schemaLoading, schemaError, taxNumber, clientId])
 
   useEffect(() => {
     if (!docId) return undefined
@@ -68,12 +80,25 @@ function ClientDetailsPage() {
     const unsub = onSnapshot(
       q,
       (snap) => setTicketCount(snap.size),
-      (_err) => setTicketCount(0)
+      () => setTicketCount(0)
     )
     return () => unsub()
   }, [docId])
 
-  const title = useMemo(() => client?.nev || 'Ügyfél', [client])
+  const title = useMemo(() => client?.nev || 'Ugyfel', [client])
+  const assigneeOptions = useMemo(
+    () => Array.from(new Set((profiles || []).map((p) => p.username).filter(Boolean))),
+    [profiles]
+  )
+
+  const generalGroups = useMemo(
+    () =>
+      groups.map((g) => ({
+        ...g,
+        keys: g.keys.filter((key) => !NAV_KEYS.includes(key)),
+      })),
+    [groups]
+  )
 
   const handleViewTickets = () => {
     if (!docId) return
@@ -94,7 +119,7 @@ function ClientDetailsPage() {
   const handleCreateTicket = async () => {
     if (!docId || !ticketClient) return
     if (!ticketDescription.trim() || !ticketAssignee) {
-      setTicketError('Add meg a leírást és a felelőst.')
+      setTicketError('Add meg a leirast es a felelost.')
       return
     }
     try {
@@ -102,7 +127,7 @@ function ClientDetailsPage() {
       setTicketError('')
       const ref = await addDoc(collection(db, 'tickets'), {
         clientId: docId,
-        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
+        clientName: ticketClient.nev || 'Ismeretlen ugyfel',
         description: ticketDescription.trim(),
         status: 'Nyitott',
         createdBy: actorName || 'Ismeretlen',
@@ -122,7 +147,7 @@ function ClientDetailsPage() {
       setTicketDescription('')
       setTicketAssignee(actorName || '')
     } catch (err) {
-      setTicketError(err.message || 'Ticket létrehozása sikertelen')
+      setTicketError(err.message || 'Ticket letrehozasa sikertelen')
     } finally {
       setTicketSaving(false)
     }
@@ -146,16 +171,16 @@ function ClientDetailsPage() {
             <TbArrowLeft />
           </button>
           <div className="section-header__intro">
-            <p className="eyebrow">Ügyfél</p>
+            <p className="eyebrow">Ugyfel</p>
             <h1 className="section-title">{title}</h1>
-            {taxNumber ? <p className="section-subtitle">Adószám: {taxNumber}</p> : null}
+            {taxNumber ? <p className="section-subtitle">Adoszam: {taxNumber}</p> : null}
             {clientId && !taxNumber ? <p className="section-subtitle">ID: {clientId}</p> : null}
           </div>
         </div>
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
-      {loading ? <div className="banner">Betöltés...</div> : null}
+      {loading || schemaLoading ? <div className="banner">Betoltes...</div> : null}
 
       {!loading && client ? (
         <section className="panel">
@@ -165,7 +190,9 @@ function ClientDetailsPage() {
             onCreateTicket={handleCreateTicketClick}
             onViewTickets={handleViewTickets}
             ticketCount={ticketCount}
-            fields={fieldDefinitions}
+            fields={fields}
+            groups={generalGroups}
+            navKeys={NAV_KEYS}
             onNavTestLog={async (payload) => {
               if (!docId) return
               await logClientActivity({
@@ -177,7 +204,7 @@ function ClientDetailsPage() {
               })
             }}
             activities={activities}
-            activitiesLoading={false}
+            activitiesLoading={activitiesLoading}
           />
         </section>
       ) : null}
@@ -190,6 +217,7 @@ function ClientDetailsPage() {
           assignedTo={ticketAssignee}
           onChangeAssignedTo={setTicketAssignee}
           currentUser={actorName}
+          assigneeOptions={assigneeOptions}
           saving={ticketSaving}
           error={ticketError}
           onCancel={() => setTicketClient(null)}

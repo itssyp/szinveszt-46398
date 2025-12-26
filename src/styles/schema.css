@@ -1,0 +1,116 @@
+.schema-group {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.schema-field-card {
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: default;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+}
+
+.schema-field-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.09);
+  border-color: var(--accent);
+}
+
+.group-title {
+  font-size: 1.05rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.group-header {
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+
+.field-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.field-label {
+  gap: 8px;
+}
+
+.field-label-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-label-input input {
+  flex: 1;
+}
+
+.group-divider {
+  position: relative;
+  margin: 18px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: #d7deea;
+}
+
+.divider-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.divider-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.15);
+}
+
+.schema-field-placeholder {
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 16px;
+  background: #f8fafc;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.schema-field-placeholder:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+}
+
+.schema-field-placeholder.active {
+  flex-direction: column;
+  align-items: stretch;
+  cursor: default;
+}

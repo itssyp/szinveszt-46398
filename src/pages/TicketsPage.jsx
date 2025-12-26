@@ -4,11 +4,13 @@ import { orderBy, query } from 'firebase/firestore'
 import useCollectionSubscription from '../hooks/useCollectionSubscription'
 import Modal from '../components/Modal'
 import TicketModal from '../components/TicketModal'
+import { useUserProfile } from '../hooks/useUserProfile.jsx'
 
 function TicketsPage({ currentUser }) {
   const { data: tickets, error, loading } = useCollectionSubscription('tickets', (coll) =>
     query(coll, orderBy('createdAt', 'desc'))
   )
+  const { profiles, profilesError } = useUserProfile()
   const [selectedTicket, setSelectedTicket] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
@@ -21,7 +23,7 @@ function TicketsPage({ currentUser }) {
       const updated = tickets.find((t) => t.id === selectedTicket.id)
       if (updated) setSelectedTicket(updated)
     }
-  }, [tickets]) // keep modal data live
+  }, [tickets])
 
   useEffect(() => {
     const clientId = searchParams.get('clientId') || ''
@@ -32,6 +34,27 @@ function TicketsPage({ currentUser }) {
       setClientFilter({ id: '', name: '' })
     }
   }, [searchParams])
+
+  const assigneeColors = useMemo(() => {
+    const map = {}
+    profiles.forEach((p) => {
+      const key = (p.username || p.email || '').trim().toLowerCase()
+      if (key) map[key] = p.themeColor || map[key]
+    })
+    return map
+  }, [profiles])
+
+  const assigneeOptions = useMemo(() => {
+    const names = new Set()
+    profiles.forEach((p) => {
+      if (p.username) names.add(p.username)
+    })
+    tickets.forEach((t) => {
+      if (t.assignedTo) names.add(t.assignedTo)
+    })
+    if (currentUser) names.add(currentUser)
+    return Array.from(names)
+  }, [profiles, tickets, currentUser])
 
   const filteredTickets = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -73,6 +96,7 @@ function TicketsPage({ currentUser }) {
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+      {profilesError ? <div className="banner banner-error">Hiba: {profilesError}</div> : null}
 
       <section className="content-grid">
         <div className="panel tickets-panel">
@@ -110,11 +134,14 @@ function TicketsPage({ currentUser }) {
                 <span>Felelős</span>
                 <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
                   <option value="">Mind</option>
-                  {['Szindi', 'Fanni', 'Szilveszter'].map((u) => (
-                    <option key={u} value={u.toLowerCase()}>
-                      {u}
-                    </option>
-                  ))}
+                  {assigneeOptions.map((u) => {
+                    const value = u.toLowerCase()
+                    return (
+                      <option key={u} value={value}>
+                        {u}
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
               <label className="filter-control">
@@ -148,30 +175,34 @@ function TicketsPage({ currentUser }) {
               </div>
             ) : (
               <>
-                {filteredTickets.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`ticket-row clickable ${t.assignedTo ? `assignee-${t.assignedTo.toLowerCase()}` : ''}`}
-                    onClick={() => setSelectedTicket(t)}
-                  >
-                    <div className="ticket-head">
-                      <div className="ticket-client">{t.clientName || 'Ismeretlen ügyfél'}</div>
-                      <div className={`ticket-status ${t.resolved ? 'is-resolved' : 'is-open'}`}>
-                        {t.resolved ? 'Megoldva' : 'Nyitott'}
+                {filteredTickets.map((t) => {
+                  const accent = assigneeColors[(t.assignedTo || '').trim().toLowerCase()]
+                  return (
+                    <div
+                      key={t.id}
+                      className="ticket-row clickable"
+                      style={accent ? { '--ticket-accent': accent } : undefined}
+                      onClick={() => setSelectedTicket(t)}
+                    >
+                      <div className="ticket-head">
+                        <div className="ticket-client">{t.clientName || 'Ismeretlen ügyfél'}</div>
+                        <div className={`ticket-status ${t.resolved ? 'is-resolved' : 'is-open'}`}>
+                          {t.resolved ? 'Megoldva' : 'Nyitott'}
+                        </div>
+                      </div>
+                      <div className="ticket-desc">{t.description || 'Nincs leírás'}</div>
+                      <div className="ticket-meta">
+                        <span>
+                          {t.createdAt?.toDate
+                            ? t.createdAt.toDate().toLocaleString()
+                            : 'Nincs dátum'}
+                        </span>
+                        {t.clientId ? <span className="muted">ID: {t.clientId}</span> : null}
+                        {t.assignedTo ? <span className="muted">Felelős: {t.assignedTo}</span> : null}
                       </div>
                     </div>
-                    <div className="ticket-desc">{t.description || 'Nincs leírás'}</div>
-                    <div className="ticket-meta">
-                      <span>
-                        {t.createdAt?.toDate
-                          ? t.createdAt.toDate().toLocaleString()
-                          : 'Nincs dátum'}
-                      </span>
-                      {t.clientId ? <span className="muted">ID: {t.clientId}</span> : null}
-                      {t.assignedTo ? <span className="muted">Felelős: {t.assignedTo}</span> : null}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
                 {!filteredTickets.length ? <p className="muted">Nincsenek ticketek.</p> : null}
               </>
             )}
@@ -185,6 +216,7 @@ function TicketsPage({ currentUser }) {
             ticket={selectedTicket}
             onClose={() => setSelectedTicket(null)}
             currentUser={currentUser}
+            assigneeOptions={assigneeOptions}
           />
         </Modal>
       ) : null}

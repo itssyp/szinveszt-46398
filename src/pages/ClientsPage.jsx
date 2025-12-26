@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { TbTrash } from 'react-icons/tb'
 import { db } from '../firebase'
 import ClientForm from '../components/ClientForm'
 import Modal from '../components/Modal'
 import ClientCards from '../components/ClientCards'
 import TicketCreateModal from '../components/TicketCreateModal'
-import { fieldDefinitions, emptyClient } from '../constants/clientFields'
 import { useClientsCache } from '../hooks/useClientsCache'
 import ClientImportWizard from '../components/ClientImportWizard'
 import IncomesImportModal from '../components/IncomesImportModal'
@@ -18,14 +18,21 @@ import ClientsFilterBar from '../features/clients/components/ClientsFilterBar'
 import ClientListView from '../features/clients/components/ClientListView'
 import ClientSkeletons from '../features/clients/components/ClientSkeletons'
 import { buildExistingIdSet } from '../features/clients/utils/clientDates'
-import { TbTrash } from 'react-icons/tb'
+import { useClientSchema } from '../hooks/useClientSchema.jsx'
 
-function ClientsPage({ currentUser }) {
+function ClientsPage({ currentUser, userProfiles = [] }) {
   const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
-  const [formData, setFormData] = useState(emptyClient)
+  const {
+    fields,
+    groups,
+    emptyClientTemplate,
+    loading: schemaLoading,
+    error: schemaError,
+  } = useClientSchema()
+  const [formData, setFormData] = useState({})
   const [editingId, setEditingId] = useState(null)
-  const [status, setStatus] = useState({ message: 'Kapcsolódás...', ok: false })
+  const [status, setStatus] = useState({ message: 'Kapcsolodas...', ok: false })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [showFormModal, setShowFormModal] = useState(false)
@@ -40,6 +47,10 @@ function ClientsPage({ currentUser }) {
   const [deleting, setDeleting] = useState(false)
   const selectAllRef = useRef(null)
   const [selectionMode, setSelectionMode] = useState(false)
+  const assigneeOptions = useMemo(
+    () => Array.from(new Set((userProfiles || []).map((p) => p.username).filter(Boolean))),
+    [userProfiles]
+  )
 
   const {
     filters: { searchTerm, statusFilter, startYear, startMonth, sortBy, viewMode },
@@ -61,9 +72,7 @@ function ClientsPage({ currentUser }) {
 
   useEffect(() => {
     if (!selectionMode || !selectAllRef.current) return
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = someVisibleSelected
-    }
+    selectAllRef.current.indeterminate = someVisibleSelected
   }, [someVisibleSelected, allVisibleSelected, selectionMode])
 
   useEffect(() => {
@@ -81,16 +90,22 @@ function ClientsPage({ currentUser }) {
       setError(clientsError)
       setStatus({ message: 'Hiba a Firestore kapcsolatban.', ok: false })
     } else if (!clientsLoading) {
-      setStatus({ message: 'Kapcsolat aktív és adatok betöltve.', ok: true })
+      setStatus({ message: 'Kapcsolat aktiv es adatok betoltve.', ok: true })
     }
   }, [clientsError, clientsLoading])
+
+  useEffect(() => {
+    if (!schemaLoading && emptyClientTemplate) {
+      setFormData(emptyClientTemplate)
+    }
+  }, [schemaLoading, emptyClientTemplate])
 
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
   }
 
   const resetForm = () => {
-    setFormData(emptyClient)
+    setFormData(emptyClientTemplate)
     setEditingId(null)
     setShowFormModal(false)
   }
@@ -121,7 +136,7 @@ function ClientsPage({ currentUser }) {
 
   const handleDeleteSelected = async () => {
     if (!selectedIds.length) return
-    const confirmed = window.confirm('Biztosan törölni szeretnéd a kijelölt ügyfeleket?')
+    const confirmed = window.confirm('Biztosan torolni szeretned a kijelolt ugyfeleket?')
     if (!confirmed) return
     setDeleting(true)
     setError('')
@@ -129,10 +144,10 @@ function ClientsPage({ currentUser }) {
       await Promise.all(selectedIds.map((id) => deleteDoc(doc(db, 'clients', id))))
       setSelectedIds([])
       setSelectionMode(false)
-      setStatus({ message: 'Kijelölt ügyfelek törölve.', ok: true })
+      setStatus({ message: 'Kijelolt ugyfelek torolve.', ok: true })
     } catch (err) {
-      setError(err.message || 'Törlés sikertelen')
-      setStatus({ message: 'Nem sikerült törölni a kijelölt ügyfeleket.', ok: false })
+      setError(err.message || 'Torles sikertelen')
+      setStatus({ message: 'Nem sikerult torolni a kijelolt ugyfeleket.', ok: false })
     } finally {
       setDeleting(false)
     }
@@ -147,25 +162,25 @@ function ClientsPage({ currentUser }) {
       const normalizedPid = normalizeNumericId(formData.adoazonosito)
       if (!editingId) {
         if (normalizedTax && existingIds.has(`tax:${normalizedTax}`)) {
-          throw new Error('Már létezik ügyfél ezzel az adószámmal.')
+          throw new Error('Mar letezik ugyfel ezzel az adoszammal.')
         }
         if (normalizedPid && existingIds.has(`pid:${normalizedPid}`)) {
-          throw new Error('Már létezik ügyfél ezzel az adóazonosítóval.')
+          throw new Error('Mar letezik ugyfel ezzel az adoazonositoval.')
         }
       }
 
       if (editingId) {
         const ref = doc(db, 'clients', editingId)
         await updateDoc(ref, formData)
-        setStatus({ message: 'Ügyfél frissítve.', ok: true })
+        setStatus({ message: 'Ugyfel frissitve.', ok: true })
       } else {
         await addDoc(collection(db, 'clients'), formData)
-        setStatus({ message: 'Új ügyfél rögzítve.', ok: true })
+        setStatus({ message: 'Uj ugyfel rogzitve.', ok: true })
       }
       resetForm()
     } catch (err) {
-      setError(err.message || 'Mentési hiba')
-      setStatus({ message: 'Mentés sikertelen.', ok: false })
+      setError(err.message || 'Mentesi hiba')
+      setStatus({ message: 'Mentes sikertelen.', ok: false })
     } finally {
       setSaving(false)
     }
@@ -180,7 +195,7 @@ function ClientsPage({ currentUser }) {
 
   const handleCreateTicket = async () => {
     if (!ticketClient || !ticketDescription.trim() || !ticketAssignee) {
-      setTicketError('Add meg a leírást és a felelőst.')
+      setTicketError('Add meg a leirast es a felelost.')
       return
     }
     try {
@@ -188,7 +203,7 @@ function ClientsPage({ currentUser }) {
       setTicketError('')
       const ref = await addDoc(collection(db, 'tickets'), {
         clientId: ticketClient.id,
-        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
+        clientName: ticketClient.nev || 'Ismeretlen ugyfel',
         description: ticketDescription.trim(),
         status: 'Nyitott',
         createdBy: currentUser || 'Ismeretlen',
@@ -206,10 +221,10 @@ function ClientsPage({ currentUser }) {
       })
       setTicketClient(null)
       setTicketDescription('')
-      setStatus({ message: 'Ticket létrehozva.', ok: true })
+      setStatus({ message: 'Ticket letrehozva.', ok: true })
     } catch (err) {
-      setTicketError(err.message || 'Ticket létrehozása sikertelen')
-      setStatus({ message: 'Hiba ticket létrehozásakor.', ok: false })
+      setTicketError(err.message || 'Ticket letrehozasa sikertelen')
+      setStatus({ message: 'Hiba ticket letrehozasakor.', ok: false })
     } finally {
       setTicketSaving(false)
     }
@@ -238,6 +253,8 @@ function ClientsPage({ currentUser }) {
     })
   }
 
+  const formDisabled = schemaLoading || !fields.length
+
   return (
     <main className="page-container">
       <ClientsHeader
@@ -246,10 +263,15 @@ function ClientsPage({ currentUser }) {
         status={status}
         onOpenImportWizard={() => setShowImportWizard(true)}
         onOpenIncomeImport={() => setShowIncomeImport(true)}
-        onAddClient={() => setShowFormModal(true)}
+        onAddClient={() => {
+          setFormData(emptyClientTemplate)
+          setEditingId(null)
+          setShowFormModal(true)
+        }}
       />
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+      {schemaError ? <div className="banner banner-error">Sema hiba: {schemaError}</div> : null}
 
       <ClientsFilterBar
         searchTerm={searchTerm}
@@ -277,12 +299,12 @@ function ClientsPage({ currentUser }) {
               onChange={toggleSelectAllVisible}
               aria-label="Select all clients in view"
             />
-            <span>Kijelölés ezen a listán</span>
+            <span>Kijeloles ezen a listan</span>
           </label>
           <div className="selection-bar__actions">
-            <span className="pill">{selectedIds.length} kiválasztva</span>
+            <span className="pill">{selectedIds.length} kivalasztva</span>
             <button className="btn ghost" type="button" onClick={clearSelection} disabled={!selectedIds.length}>
-              Kijelölés törlése
+              Kijeloles torlese
             </button>
             <button
               className="btn ghost danger"
@@ -334,16 +356,18 @@ function ClientsPage({ currentUser }) {
       )}
 
       {showFormModal ? (
-        <Modal onClose={resetForm} title={editingId ? 'Ügyfél szerkesztése' : 'Új ügyfél'}>
+        <Modal onClose={resetForm} title={editingId ? 'Ugyfel szerkesztese' : 'Uj ugyfel'}>
           <ClientForm
-            fields={fieldDefinitions}
+            fields={fields}
+            groups={groups}
             formData={formData}
             onChange={handleChange}
             onSubmit={handleSubmit}
             onReset={resetForm}
             editingId={editingId}
-            saving={saving}
+            saving={saving || formDisabled}
           />
+          {schemaLoading ? <p className="muted">Sema betoltese...</p> : null}
         </Modal>
       ) : null}
 
@@ -353,7 +377,7 @@ function ClientsPage({ currentUser }) {
           clients={clients}
           onComplete={(result) =>
             setStatus({
-              message: `Import kész. Új: ${result.created}, frissített: ${result.updated}, kihagyva: ${result.skipped}.`,
+              message: `Import kesz. Uj: ${result.created}, frissitett: ${result.updated}, kihagyva: ${result.skipped}.`,
               ok: true,
             })
           }
@@ -370,6 +394,7 @@ function ClientsPage({ currentUser }) {
           assignedTo={ticketAssignee}
           onChangeAssignedTo={setTicketAssignee}
           currentUser={currentUser}
+          assigneeOptions={assigneeOptions}
           saving={ticketSaving}
           error={ticketError}
           onCancel={() => setTicketClient(null)}

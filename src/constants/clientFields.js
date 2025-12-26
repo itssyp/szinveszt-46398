@@ -1,4 +1,4 @@
-export const fieldDefinitions = [
+export const defaultFieldDefinitions = [
   { key: 'torzs', label: 'Törzs' },
   { key: 'nev', label: 'Név' },
   {
@@ -16,7 +16,7 @@ export const fieldDefinitions = [
   },
   { key: 'adoszam', label: 'Adószám' },
   { key: 'adoazonosito', label: 'Adóazonosító' },
-  { key: 'tajszam', label: 'TAJszám' },
+  { key: 'tajszam', label: 'TAJ-szám' },
   { key: 'kapuseged', label: 'Kapusegéd', type: 'boolean' },
   { key: 'viki', label: 'Viki', type: 'boolean' },
   { key: 'relax', label: 'Relax', type: 'boolean' },
@@ -95,19 +95,18 @@ export const fieldDefinitions = [
   { key: 'kedvezmenyek', label: 'Kedvezmények' },
   { key: 'megszunesDatuma', label: 'Megszűnés dátuma', type: 'date' },
   { key: 'szunetKezdete', label: 'Szünet kezdete', type: 'date' },
-  { key: 'navOnlineActive', label: 'NAV 2.0 adat kérés aktív', type: 'boolean' },
+  { key: 'navOnlineActive', label: 'NAV 2.0 adatkeresés aktív', type: 'boolean' },
   { key: 'navOnlineUser', label: 'NAV felhasználónév' },
   { key: 'navOnlinePassword', label: 'NAV jelszó' },
-  { key: 'navOnlineSignerKey', label: 'NAV aláíró kulcs' },
-  { key: 'navOnlineExchangeKey', label: 'NAV csere kulcs' },
+  { key: 'navOnlineSignerKey', label: 'NAV aláírási kulcs' },
+  { key: 'navOnlineExchangeKey', label: 'NAV cserekulcs' },
   { key: 'navOnlineStartDate', label: 'NAV kezdő dátum', type: 'date' },
-
 ]
 
-export const fieldGroups = [
+export const defaultFieldGroups = [
   {
     title: 'Általános',
-    keys: ['nev', 'statusz', 'nyelv', 'torzs', 'szuletesiIdo', 'munkavegzesJellege',],
+    keys: ['nev', 'statusz', 'nyelv', 'torzs', 'szuletesiIdo', 'munkavegzesJellege'],
   },
   {
     title: 'Kapcsolat',
@@ -115,7 +114,7 @@ export const fieldGroups = [
   },
   {
     title: 'Adózás',
-    keys: ['adoszam', 'adoazonosito', 'afa', 'adozasiForma', 'ipa', 'koltseghanyad', 'kedvezmenyek',],
+    keys: ['adoszam', 'adoazonosito', 'afa', 'adozasiForma', 'ipa', 'koltseghanyad', 'kedvezmenyek'],
   },
   {
     title: 'Dátumok',
@@ -131,20 +130,29 @@ export const fieldGroups = [
   },
   {
     title: 'NAV online számla',
-    keys: ['navOnlineActive', 'navOnlineUser', 'navOnlinePassword', 'navOnlineSignerKey', 'navOnlineExchangeKey', 'navOnlineStartDate'],
+    keys: [
+      'navOnlineActive',
+      'navOnlineUser',
+      'navOnlinePassword',
+      'navOnlineSignerKey',
+      'navOnlineExchangeKey',
+      'navOnlineStartDate',
+    ],
   },
-
 ]
 
-export const emptyClient = fieldDefinitions.reduce((acc, field) => {
-  if (field.type === 'boolean') {
-    acc[field.key] = false
-  } else if (field.type === 'multiselect') {
-    acc[field.key] = []
-  } else if (field.key === 'monthlyIncomes') {
-    acc[field.key] = []
-  } else {
-    acc[field.key] = ''
-  }
-  return acc
-}, {})
+export const defaultFieldKeys = new Set(defaultFieldDefinitions.map((f) => f.key))
+
+export const buildEmptyClient = (fields) =>
+  fields.reduce((acc, field) => {
+    if (field.type === 'boolean') {
+      acc[field.key] = false
+    } else if (field.type === 'multiselect') {
+      acc[field.key] = []
+    } else if (field.key === 'monthlyIncomes') {
+      acc[field.key] = []
+    } else {
+      acc[field.key] = ''
+    }
+    return acc
+  }, {})

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { fieldGroups } from '../constants/clientFields'
 import { useNavOnlineConnectionTest } from '../hooks/useNavOnlineConnectionTest'
 import useNavInvoices from '../hooks/useNavInvoices'
 import {
@@ -21,7 +20,7 @@ function formatValue(key, value, fields) {
     return '-'
   }
   if (fieldMeta?.type === 'boolean') {
-    return value ? 'Aktív' : 'Inaktív'
+    return value ? 'Aktiv' : 'Inaktiv'
   }
   if (fieldMeta?.type === 'multiselect') {
     if (Array.isArray(value)) return value.join(', ')
@@ -44,6 +43,8 @@ function ClientDetails({
   onViewTickets,
   ticketCount = 0,
   fields,
+  groups,
+  navKeys = [],
   onNavTestLog,
   activities = [],
   activitiesLoading = false,
@@ -60,15 +61,6 @@ function ClientDetails({
   })
   const lastNavStatus = useRef('idle')
   const navLogger = onNavTestLog || (() => {})
-
-  const navKeys = [
-    'navOnlineActive',
-    'navOnlineUser',
-    'navOnlinePassword',
-    'navOnlineSignerKey',
-    'navOnlineExchangeKey',
-    'navOnlineStartDate',
-  ]
 
   const navTest = useNavOnlineConnectionTest({
     client,
@@ -96,7 +88,7 @@ function ClientDetails({
     })
   }, [navTest.status, navTest.error, navLogger])
 
-  const generalGroups = fieldGroups.filter((group) => group.title !== 'NAV online számla')
+  const generalGroups = groups || []
 
   let tabContent = null
   if (activeTab === 'general') {
@@ -137,35 +129,35 @@ function ClientDetails({
             className={`details-tab${activeTab === 'general' ? ' active' : ''}`}
             onClick={() => setActiveTab('general')}
           >
-            Általános
+            Altalanos
           </button>
           <button
             type="button"
             className={`details-tab${activeTab === 'nav' ? ' active' : ''}`}
             onClick={() => setActiveTab('nav')}
           >
-            NAV online számla
+            NAV online szamla
           </button>
           <button
             type="button"
             className={`details-tab${activeTab === 'invoices' ? ' active' : ''}`}
             onClick={() => setActiveTab('invoices')}
           >
-            Számlák
+            Szamlak
           </button>
           <button
             type="button"
             className={`details-tab${activeTab === 'incomes' ? ' active' : ''}`}
             onClick={() => setActiveTab('incomes')}
           >
-            Bevételek
+            Bevetelek
           </button>
           <button
             type="button"
             className={`details-tab${activeTab === 'activity' ? ' active' : ''}`}
             onClick={() => setActiveTab('activity')}
           >
-            Aktivitás
+            Aktivitas
           </button>
         </div>
 
@@ -174,10 +166,10 @@ function ClientDetails({
             Ticketek: {ticketCount}
           </button>
           <button type="button" className="btn ghost" onClick={onCreateTicket}>
-            Új ticket
+            Uj ticket
           </button>
           <button type="button" className="btn" onClick={onEdit}>
-            Szerkesztés
+            Szerkesztes
           </button>
         </div>
       </div>

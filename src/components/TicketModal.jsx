@@ -3,9 +3,7 @@ import { doc, updateDoc, arrayUnion, Timestamp, deleteDoc } from 'firebase/fires
 import { db } from '../firebase'
 import { logClientActivity } from '../utils/clientActivity'
 
-const ASSIGNEES = ['Szindi', 'Fanni', 'Szilveszter']
-
-function TicketModal({ ticket, onClose, currentUser }) {
+function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -90,6 +88,9 @@ function TicketModal({ ticket, onClose, currentUser }) {
   const statusLabel = localTicket.resolved ? 'Megoldva' : 'Nyitott'
   const assignee = localTicket.assignedTo || 'Nincs megadva'
   const creator = localTicket.createdBy || 'Ismeretlen'
+  const availableAssignees = Array.from(
+    new Set([...(assigneeOptions || []), localTicket.assignedTo || ''].filter(Boolean))
+  )
 
   return (
     <div className="details">
@@ -129,14 +130,11 @@ function TicketModal({ ticket, onClose, currentUser }) {
               disabled={updatingAssignee || saving}
             >
               <option value="">Nincs megadva</option>
-              {ASSIGNEES.map((name) => (
+              {availableAssignees.map((name) => (
                 <option key={name} value={name}>
                   {name}
                 </option>
               ))}
-              {assignee !== 'Nincs megadva' && !ASSIGNEES.includes(assignee) ? (
-                <option value={assignee}>{assignee}</option>
-              ) : null}
             </select>
           </div>
           <div className="meta-card">

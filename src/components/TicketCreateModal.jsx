@@ -9,11 +9,14 @@ function TicketCreateModal({
   assignedTo,
   onChangeAssignedTo,
   currentUser,
+  assigneeOptions = [],
   saving,
   error,
   onCancel,
   onSubmit,
 }) {
+  const options = Array.from(new Set([currentUser, ...assigneeOptions].filter(Boolean)))
+
   return (
     <Modal title={`Új ticket - ${client?.nev || 'Ismeretlen ügyfél'}`} onClose={onCancel}>
       <div className="details">
@@ -29,14 +32,11 @@ function TicketCreateModal({
               <span>Felelős</span>
               <select value={assignedTo} onChange={(e) => onChangeAssignedTo(e.target.value)}>
                 <option value="">Válassz...</option>
-                {[currentUser, 'Szindi', 'Fanni', 'Szilveszter']
-                  .filter(Boolean)
-                  .filter((v, idx, arr) => arr.indexOf(v) === idx)
-                  .map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
+                {options.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="form-field">
@@ -49,16 +49,16 @@ function TicketCreateModal({
               />
             </div>
           </div>
-        <div className="form-actions">
-          <button className="btn" type="button" disabled={saving} onClick={onSubmit}>
-            <TbSend />
-            {saving ? 'Mentés...' : 'Ticket létrehozása'}
-          </button>
-          <button className="btn ghost" type="button" onClick={onCancel} disabled={saving}>
-            <TbX />
-            Mégse
-          </button>
-        </div>
+          <div className="form-actions">
+            <button className="btn" type="button" disabled={saving} onClick={onSubmit}>
+              <TbSend />
+              {saving ? 'Mentés...' : 'Ticket létrehozása'}
+            </button>
+            <button className="btn ghost" type="button" onClick={onCancel} disabled={saving}>
+              <TbX />
+              Mégse
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

@@ -1,7 +1,6 @@
 import React from 'react'
-import { fieldGroups } from '../constants/clientFields'
 
-function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, saving }) {
+function ClientForm({ fields, groups, formData, onChange, onSubmit, onReset, editingId, saving }) {
   const fieldMap = fields.reduce((acc, f) => ({ ...acc, [f.key]: f }), {})
 
   const renderField = (field) => {
@@ -90,11 +89,11 @@ function ClientForm({ fields, formData, onChange, onSubmit, onReset, editingId, 
   return (
     <div className="form-shell">
       <form onSubmit={onSubmit} className="client-form">
-        {fieldGroups.map((group) => (
+        {groups.map((group) => (
           <div key={group.title} className="form-section">
             <h3>{group.title}</h3>
             <div className="form-grid">
-              {group.keys.map((key) => renderField(fieldMap[key]))}
+              {group.keys.map((key) => (fieldMap[key] ? renderField(fieldMap[key]) : null))}
             </div>
           </div>
         ))}
