@@ -566,6 +566,56 @@ textarea {
   gap: 10px;
 }
 
+.table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table-head,
+.table-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+}
+
+.table-head {
+  background: var(--surface-muted);
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.table-row:nth-child(odd) {
+  background: #f8fafc;
+}
+
+.table-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.stacked-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stacked-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #94a3b8;

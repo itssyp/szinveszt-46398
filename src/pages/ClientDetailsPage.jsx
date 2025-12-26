@@ -12,6 +12,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { normalizeTaxId } from '../utils/id'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
+import { useEvStatusSegments, useEvActivityPeriods } from '../hooks/useEvData'
 
 const NAV_KEYS = [
   'navOnlineActive',
@@ -40,6 +41,16 @@ function ClientDetailsPage() {
   const { activities, loading: activitiesLoading } = useClientActivities(docId)
   const { user } = useAuth()
   const { profile, profiles } = useUserProfile()
+  const {
+    segments: evStatusSegments,
+    loading: evStatusLoading,
+    error: evStatusError,
+  } = useEvStatusSegments(docId)
+  const {
+    periods: evActivityPeriods,
+    loading: evActivityLoading,
+    error: evActivityError,
+  } = useEvActivityPeriods(docId)
 
   const actorName = useMemo(() => {
     if (profile?.username) return profile.username
@@ -68,7 +79,7 @@ function ClientDetailsPage() {
         setError('')
       } else {
         setClient(null)
-        setError('Nem talalhato ugyfel.')
+        setError('Nem található ügyfél.')
       }
       setLoading(false)
     }
@@ -85,7 +96,7 @@ function ClientDetailsPage() {
     return () => unsub()
   }, [docId])
 
-  const title = useMemo(() => client?.nev || 'Ugyfel', [client])
+  const title = useMemo(() => client?.nev || 'Ügyfél', [client])
   const assigneeOptions = useMemo(
     () => Array.from(new Set((profiles || []).map((p) => p.username).filter(Boolean))),
     [profiles]
@@ -171,7 +182,7 @@ function ClientDetailsPage() {
             <TbArrowLeft />
           </button>
           <div className="section-header__intro">
-            <p className="eyebrow">Ugyfel</p>
+            <p className="eyebrow">Ügyfél</p>
             <h1 className="section-title">{title}</h1>
             {taxNumber ? <p className="section-subtitle">Adoszam: {taxNumber}</p> : null}
             {clientId && !taxNumber ? <p className="section-subtitle">ID: {clientId}</p> : null}
@@ -180,7 +191,9 @@ function ClientDetailsPage() {
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
-      {loading || schemaLoading ? <div className="banner">Betoltes...</div> : null}
+      {loading || schemaLoading ? <div className="banner">Betöltés...</div> : null}
+      {evStatusError ? <div className="banner banner-error">EV státusz hiba: {evStatusError}</div> : null}
+      {evActivityError ? <div className="banner banner-error">Szüneteltetés hiba: {evActivityError}</div> : null}
 
       {!loading && client ? (
         <section className="panel">
@@ -205,6 +218,11 @@ function ClientDetailsPage() {
             }}
             activities={activities}
             activitiesLoading={activitiesLoading}
+            evStatusSegments={evStatusSegments}
+            evStatusLoading={evStatusLoading}
+            evActivityPeriods={evActivityPeriods}
+            evActivityLoading={evActivityLoading}
+            clientId={docId}
           />
         </section>
       ) : null}

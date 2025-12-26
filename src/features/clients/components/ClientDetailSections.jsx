@@ -29,7 +29,7 @@ export function NavTab({ labels, client, navKeys, navTest, onReset }) {
             className="btn ghost"
             onClick={navTest.run}
             disabled={!navTest.canTest || navTest.status === 'running'}
-            title={!navTest.canTest ? 'Hiányzó NAV adatok (felhasználónév, jelszó, aláírőkulcs).' : 'NAV kapcsolat teszt'}
+            title={!navTest.canTest ? 'Hiányzó NAV adatok (felhasználónév, jelszó, aláírókulcs).' : 'NAV kapcsolat teszt'}
           >
             {navTest.status === 'running' ? 'Teszt folyamatban.' : 'Kapcsolat teszt'}
           </button>
@@ -209,6 +209,147 @@ export function ActivityTab({ activitiesLoading, activities }) {
         <h3>Aktivitás</h3>
       </div>
       {activitiesLoading ? <p className="muted">Betöltés...</p> : <ClientActivityTimeline activities={activities} />}
+    </div>
+  )
+}
+
+function formatDate(value) {
+  if (!value) return '-'
+  if (value.toDate) return value.toDate().toISOString().slice(0, 10)
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toISOString().slice(0, 10)
+}
+
+function findGaps(items, startKey = 'validFrom', endKey = 'validTo') {
+  const sorted = [...items].sort((a, b) => {
+    const aDate = a[startKey]?.toDate ? a[startKey].toDate() : new Date(a[startKey] || 0)
+    const bDate = b[startKey]?.toDate ? b[startKey].toDate() : new Date(b[startKey] || 0)
+    return aDate - bDate
+  })
+  const gaps = []
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prevEnd = sorted[i - 1][endKey]
+    const currentStart = sorted[i][startKey]
+    if (prevEnd && currentStart) {
+      const prev = prevEnd.toDate ? prevEnd.toDate() : new Date(prevEnd)
+      const curr = currentStart.toDate ? currentStart.toDate() : new Date(currentStart)
+      if (prev.getTime() + 24 * 60 * 60 * 1000 < curr.getTime()) {
+        gaps.push({ from: prevEnd, to: currentStart })
+      }
+    }
+  }
+  return gaps
+}
+
+export function EvStatusTab({ segments, loading, onAdd, onEdit, onDelete }) {
+  const gaps = findGaps(segments, 'validFrom', 'validTo')
+  return (
+    <div className="details-section details-section--line">
+      <div className="details-header">
+        <h3>EV jogi státusz</h3>
+        <div className="details-actions inline">
+          <button type="button" className="btn" onClick={onAdd}>
+            Új időszak
+          </button>
+        </div>
+      </div>
+
+      {gaps.length ? (
+        <div className="details-banner warning">Figyelmeztetés: hézagok az időszakok között ({gaps.length}).</div>
+      ) : null}
+
+      {loading ? (
+        <p className="muted">Betöltés...</p>
+      ) : segments.length ? (
+        <div className="table">
+          <div className="table-head">
+            <div>Dátum -tól</div>
+            <div>Dátum -ig</div>
+            <div>EV jogviszony</div>
+            <div>Főfoglalkozás</div>
+            <div>Nyugdíjas</div>
+            <div>Más munkaviszony</div>
+            <div>Művelet</div>
+          </div>
+          {segments.map((s) => (
+            <div key={s.id} className="table-row">
+              <div>{formatDate(s.validFrom)}</div>
+              <div>{s.validTo ? formatDate(s.validTo) : 'Nyitott'}</div>
+              <div>
+                {s.isPensioner
+                  ? '1343 – Nyugdíjas egyéni vállalkozó'
+                  : s.isMainActivity
+                    ? '1341 – Főfoglalkozású egyéni vállalkozó'
+                    : '1342 – Mellékfoglalkozású egyéni vállalkozó'}
+              </div>
+              <div>{s.isMainActivity ? 'Igen' : 'Nem'}</div>
+              <div>{s.isPensioner ? 'Igen' : 'Nem'}</div>
+              <div>{s.hasOtherEmployment ? 'Igen' : 'Nem'}</div>
+              <div className="table-actions">
+                <button className="link" type="button" onClick={() => onEdit(s)}>
+                  Szerkesztés
+                </button>
+                <button className="link danger" type="button" onClick={() => onDelete(s.id)}>
+                  Törlés
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">Nincs rögzített időszak.</p>
+      )}
+    </div>
+  )
+}
+
+export function EvActivityTab({ periods, loading, onAdd, onEdit, onDelete }) {
+  const gaps = findGaps(periods, 'from', 'to')
+  return (
+    <div className="details-section details-section--line">
+      <div className="details-header">
+        <h3>Szüneteltetés / aktivitás</h3>
+        <div className="details-actions inline">
+          <button type="button" className="btn" onClick={onAdd}>
+            Új időszak
+          </button>
+        </div>
+      </div>
+
+      {gaps.length ? (
+        <div className="details-banner warning">Figyelmeztetés: hézagok az időszakok között.</div>
+      ) : null}
+
+      {loading ? (
+        <p className="muted">Betöltés...</p>
+      ) : periods.length ? (
+        <div className="table">
+          <div className="table-head">
+            <div>Kezdő dátum</div>
+            <div>Záró dátum</div>
+            <div>Állapot</div>
+            <div>Művelet</div>
+          </div>
+          {periods.map((p) => (
+            <div key={p.id} className="table-row">
+              <div>{formatDate(p.from)}</div>
+              <div>{p.to ? formatDate(p.to) : 'Nyitott'}</div>
+              <div>{p.state === 'SUSPENDED' ? 'Szüneteltetett' : 'Aktív'}</div>
+              <div className="table-actions">
+                <button className="link" type="button" onClick={() => onEdit(p)}>
+                  Szerkesztés
+                </button>
+                <button className="link danger" type="button" onClick={() => onDelete(p.id)}>
+                  Törlés
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">Nincs rögzített időszak.</p>
+      )}
     </div>
   )
 }
