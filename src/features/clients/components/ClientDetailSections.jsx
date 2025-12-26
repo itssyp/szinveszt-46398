@@ -353,3 +353,105 @@ export function EvActivityTab({ periods, loading, onAdd, onEdit, onDelete }) {
     </div>
   )
 }
+
+export function EvnyCheckTab({
+  evnyType,
+  evnyValue,
+  setEvnyType,
+  setEvnyValue,
+  onLookup,
+  loading,
+  error,
+  result,
+  onClear,
+  onApplySuspended,
+  onCloseSuspended,
+  hasSuspensionCover,
+  openSuspended,
+}) {
+  return (
+    <div className="details-section details-section--line">
+      <div className="details-header">
+        <h3>EVNY Check (Public)</h3>
+      </div>
+      <div className="details-grid details-grid-spaced">
+        <label className="form-field">
+          <span>Keresés típusa</span>
+          <select value={evnyType} onChange={(e) => setEvnyType(e.target.value)}>
+            <option value="TORZSSZAM">TÖRZSSZÁM (adószám első 8)</option>
+            <option value="NYILVANTARTASI_SZAM">NYILVÁNTARTÁSI SZÁM</option>
+          </select>
+        </label>
+        <label className="form-field">
+          <span>Keresési érték</span>
+          <input value={evnyValue} onChange={(e) => setEvnyValue(e.target.value)} placeholder="Pl. 12345678" />
+        </label>
+      </div>
+      <div className="details-actions inline" style={{ marginTop: 10 }}>
+        <button className="btn" type="button" onClick={() => onLookup({ type: evnyType, value: evnyValue })} disabled={loading || !evnyValue}>
+          {loading ? 'Lekérdezés...' : 'EVNY lekérdezés'}
+        </button>
+        {result ? (
+          <button className="btn ghost" type="button" onClick={onClear}>
+            Törlés
+          </button>
+        ) : null}
+      </div>
+      {error ? <div className="details-banner error">Hiba: {error}</div> : null}
+      {result ? (
+        <div className="details-section">
+          <div className="details-header">
+            <h4>Eredmény</h4>
+          </div>
+          <div className="details-grid details-grid-spaced">
+            <div className="details-item">
+              <span className="details-label">Státusz</span>
+              <span className="details-value">{result.status || 'Ismeretlen'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Kezdő dátum</span>
+              <span className="details-value">{result.startDate || '-'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Szünet kezdete</span>
+              <span className="details-value">{result.suspensionStartDate || '-'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Szünet vége</span>
+              <span className="details-value">{result.suspensionEndDate || '-'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Név</span>
+              <span className="details-value">{result.name || '-'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Cím</span>
+              <span className="details-value">{result.address || '-'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Nyilvántartási szám</span>
+              <span className="details-value">{result.registryNumber || '-'}</span>
+            </div>
+            <div className="details-item">
+              <span className="details-label">Adószám</span>
+              <span className="details-value">{result.taxNumber || '-'}</span>
+            </div>
+          </div>
+          <div className="details-actions inline" style={{ marginTop: 12 }}>
+            {result.status === 'SUSPENDED' && result.suspensionStartDate && !hasSuspensionCover(result.suspensionStartDate) ? (
+              <button className="btn" type="button" onClick={onApplySuspended} disabled={loading}>
+                Felvétel szüneteltetésként
+              </button>
+            ) : null}
+            {result.status === 'ACTIVE' && openSuspended ? (
+              <button className="btn ghost" type="button" onClick={onCloseSuspended} disabled={loading}>
+                Szüneteltetés lezárása
+              </button>
+            ) : null}
+          </div>
+          <p className="muted">Utolsó lekérdezés: {result.fetchedAt || 'most'}</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}

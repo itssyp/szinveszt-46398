@@ -168,6 +168,34 @@ function ClientDetails({
     await deleteEvActivityPeriod(clientId, id)
   }
 
+  const hasSuspensionCover = (dateStr) => {
+    if (!dateStr) return false
+    return evActivityPeriods.some((p) => {
+      if (p.state !== 'SUSPENDED') return false
+      return dateInRange(p, dateStr)
+    })
+  }
+
+  const openSuspended = evActivityPeriods.find((p) => p.state === 'SUSPENDED' && !p.to)
+
+  const handleApplySuspended = async (from) => {
+    if (!from) return
+    await handleSaveEvActivity({
+      from,
+      to: null,
+      state: 'SUSPENDED',
+    })
+  }
+
+  const handleCloseSuspended = async (toDate) => {
+    if (!openSuspended) return
+    await updateEvActivityPeriod(clientId, openSuspended.id, {
+      from: openSuspended.from,
+      to: toDate || new Date().toISOString().slice(0, 10),
+      state: openSuspended.state,
+    })
+  }
+
   let tabContent = null
   if (activeTab === 'general') {
     tabContent = (
@@ -246,7 +274,7 @@ function ClientDetails({
             className={`details-tab${activeTab === 'nav' ? ' active' : ''}`}
             onClick={() => setActiveTab('nav')}
           >
-            NAV online számla
+            NAV
           </button>
           <button
             type="button"
@@ -477,6 +505,22 @@ function EvActivityForm({ initialValues, onSubmit, loading, error }) {
       </div>
     </form>
   )
+}
+
+function normalizeInputDate(value) {
+  const d = value ? new Date(value) : null
+  if (!d || Number.isNaN(d.getTime())) return null
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function dateInRange(period, dateStr) {
+  const target = normalizeInputDate(dateStr)
+  if (!target) return false
+  const start = normalizeInputDate(period.from || period.validFrom)
+  const end = normalizeInputDate(period.to || period.validTo) || new Date(8640000000000000)
+  if (!start) return false
+  return start <= target && target <= end
 }
 
 export default ClientDetails
