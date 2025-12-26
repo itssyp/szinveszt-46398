@@ -44,11 +44,14 @@ function formatAmount(amount, currency) {
   if (amount == null) return '-'
   const num = Number(amount)
   if (Number.isNaN(num)) return '-'
-  return `${num.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency || 'HUF'}`
+  const decimals = String(amount).includes('.') ? String(amount).split('.')[1].length : 0
+  const maxFractionDigits = decimals > 0 ? Math.min(decimals, 6) : 0
+  return `${num.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: maxFractionDigits })} ${currency || 'HUF'}`
 }
 
 function ClientDetails({
   client,
+  actorName,
   onEdit,
   onCreateTicket,
   onViewTickets,
@@ -221,7 +224,7 @@ function ClientDetails({
       />
     )
   } else if (activeTab === 'incomes') {
-    tabContent = <IncomesTab client={client} formatAmount={formatAmount} />
+    tabContent = <IncomesTab client={client} formatAmount={formatAmount} clientId={clientId} actorName={actorName} />
   } else if (activeTab === 'ev-status') {
     tabContent = (
       <EvStatusTab

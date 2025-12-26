@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -35,6 +36,8 @@ export function createFirebaseApp() {
 
 export const firebaseApp = createFirebaseApp()
 export const db = getFirestore(firebaseApp)
+// Use the deployed region to avoid defaulting to us-central1.
+export const functions = getFunctions(firebaseApp, 'europe-west3')
 
 if (import.meta.env.DEV) {
   const host = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || '127.0.0.1'
@@ -43,6 +46,16 @@ if (import.meta.env.DEV) {
     connectFirestoreEmulator(db, host, port)
     // eslint-disable-next-line no-console
     console.info(`Firestore emulator connected at ${host}:${port}`)
+  } catch (_e) {
+    // ignore emulator connection errors to avoid breaking prod builds
+  }
+
+  const fnHost = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || host
+  const fnPort = Number(import.meta.env.VITE_FUNCTIONS_EMULATOR_PORT || 5001)
+  try {
+    connectFunctionsEmulator(functions, fnHost, fnPort)
+    // eslint-disable-next-line no-console
+    console.info(`Functions emulator connected at ${fnHost}:${fnPort}`)
   } catch (_e) {
     // ignore emulator connection errors to avoid breaking prod builds
   }

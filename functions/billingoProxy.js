@@ -24,7 +24,7 @@ function buildBillingoApp(requireFirebaseAuthOrAppCheck) {
     if (origin && ALLOWED_ORIGINS.includes(origin)) {
       res.set('Access-Control-Allow-Origin', origin)
     } else {
-      res.set('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0])
+      res.set('Access-Control-Allow-Origin', '*')
     }
     res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
     res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Firebase-AppCheck')
@@ -35,8 +35,8 @@ function buildBillingoApp(requireFirebaseAuthOrAppCheck) {
     }
     next()
   })
-  app.use(cors({ origin: ALLOWED_ORIGINS }))
-  app.options('*', cors({ origin: ALLOWED_ORIGINS }))
+  app.use(cors({ origin: true }))
+  app.options('*', cors({ origin: true }))
   app.use(express.json())
   app.use(requireFirebaseAuthOrAppCheck)
 

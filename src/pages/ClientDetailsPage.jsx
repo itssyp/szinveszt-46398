@@ -199,6 +199,7 @@ function ClientDetailsPage() {
         <section className="panel">
           <ClientDetails
             client={client}
+            actorName={actorName}
             onEdit={goToEditPage}
             onCreateTicket={handleCreateTicketClick}
             onViewTickets={handleViewTickets}

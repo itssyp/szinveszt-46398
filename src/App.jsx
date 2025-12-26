@@ -11,6 +11,7 @@ import ClientSchemaPage from './pages/ClientSchemaPage.jsx'
 import ClientImportPage from './pages/ClientImportPage.jsx'
 import IncomeImportPage from './pages/IncomeImportPage.jsx'
 import ClientCreatePage from './pages/ClientCreatePage.jsx'
+import Bevallas58Page from './pages/Bevallas58Page.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
 import { ClientSchemaProvider } from './hooks/useClientSchema.jsx'
@@ -28,8 +29,10 @@ function AppShell() {
   } = useUserProfile()
   const location = useLocation()
   const [clientMenuOpen, setClientMenuOpen] = useState(false)
+  const [bevallasMenuOpen, setBevallasMenuOpen] = useState(false)
   const clientsSectionActive =
     location.pathname.startsWith('/clients') || location.pathname.startsWith('/client-schema')
+  const bevallasSectionActive = location.pathname.startsWith('/bevallas')
 
   const displayName = useMemo(() => {
     if (profile?.username) return profile.username
@@ -42,6 +45,7 @@ function AppShell() {
 
   useEffect(() => {
     setClientMenuOpen(false)
+    setBevallasMenuOpen(false)
   }, [location.pathname])
 
   if (!authReady || waitingForProfile) {
@@ -116,6 +120,27 @@ function AppShell() {
               </NavLink>
             </div>
           </div>
+          <div
+            className={`nav-dropdown${bevallasSectionActive ? ' active' : ''}`}
+            onMouseLeave={() => setBevallasMenuOpen(false)}
+          >
+            <button
+              className={`nav-link nav-dropdown__toggle${bevallasSectionActive ? ' active' : ''}`}
+              type="button"
+              onClick={() => setBevallasMenuOpen((v) => !v)}
+            >
+              Bevallások
+            </button>
+            <div className={`nav-dropdown__menu${bevallasMenuOpen ? ' is-open' : ''}`}>
+              <NavLink
+                to="/bevallas/58"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setBevallasMenuOpen(false)}
+              >
+                58
+              </NavLink>
+            </div>
+          </div>
           <NavLink
             to="/tickets"
             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
@@ -156,6 +181,7 @@ function AppShell() {
         <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
         <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
         <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />
+        <Route path="/bevallas/58" element={<Bevallas58Page />} />
         <Route
           path="/tickets"
           element={<TicketsPage currentUser={displayName} userProfiles={profiles || []} />}

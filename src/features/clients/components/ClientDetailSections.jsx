@@ -1,5 +1,10 @@
-import React from 'react'
+import React, { useMemo, useState } from 'react'
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import ClientActivityTimeline from '../../../components/ClientActivityTimeline'
+import Modal from '../../../components/Modal'
+import { db } from '../../../firebase'
+import { mergeMonthlyIncomes } from '../../imports/utils/incomeImport'
+import { logClientActivity } from '../../../utils/clientActivity'
 
 export function GeneralTab({ groups, labels, client, fields, formatValue }) {
   return groups.map((group) => (
@@ -176,14 +181,110 @@ export function InvoicesTab({
   )
 }
 
-export function IncomesTab({ client, formatAmount }) {
-  const incomes = Array.isArray(client.monthlyIncomes) ? [...client.monthlyIncomes] : []
-  incomes.sort((a, b) => String(b.month || '').localeCompare(String(a.month || '')))
+
+
+
+export function IncomesTab({ client, formatAmount, clientId, actorName }) {
+  const [formMonth, setFormMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [formAmount, setFormAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
+  const [showModal, setShowModal] = useState(false)
+
+  const incomes = useMemo(() => {
+    const list = Array.isArray(client?.monthlyIncomes) ? [...client.monthlyIncomes] : []
+    list.sort((a, b) => String(b.month || '').localeCompare(String(a.month || '')))
+    return list
+  }, [client])
+
+  const validate = () => {
+    if (!clientId) return 'Hiányzó ügyfél ID.'
+    if (!formMonth) return 'Hónap megadása kötelező.'
+    const amountNum = Number(formAmount)
+    if (!Number.isFinite(amountNum)) return 'Érvénytelen összeg.'
+    return null
+  }
+
+  const resetForm = () => {
+    setFormMonth(new Date().toISOString().slice(0, 7))
+    setFormAmount('')
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    const validationError = validate()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+    const amountNum = Number(formAmount)
+    setSaving(true)
+    setError('')
+    setStatus('')
+    try {
+      const merged = mergeMonthlyIncomes(client?.monthlyIncomes, [{ month: formMonth, amount: amountNum }])
+      await updateDoc(doc(db, 'clients', clientId), {
+        monthlyIncomes: merged,
+        monthlyIncomesUpdatedAt: serverTimestamp(),
+      })
+      await logClientActivity({
+        clientId,
+        type: 'income_updated',
+        message: `Bevétel frissítve: ${formMonth}`,
+        meta: { month: formMonth, amount: amountNum, source: 'manual' },
+        actor: actorName || 'Ismeretlen',
+      })
+      setStatus('Bevétel elmentve.')
+      setShowModal(false)
+      resetForm()
+    } catch (err) {
+      setError(err.message || 'Mentési hiba')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (month) => {
+    if (!clientId) return
+    setSaving(true)
+    setError('')
+    setStatus('')
+    try {
+      const remaining = incomes.filter((inc) => inc.month !== month)
+      await updateDoc(doc(db, 'clients', clientId), {
+        monthlyIncomes: remaining,
+        monthlyIncomesUpdatedAt: serverTimestamp(),
+      })
+      await logClientActivity({
+        clientId,
+        type: 'income_deleted',
+        message: `Bevétel törölve: ${month}`,
+        meta: { month, source: 'manual' },
+        actor: actorName || 'Ismeretlen',
+      })
+      setStatus('Bevétel törölve.')
+    } catch (err) {
+      setError(err.message || 'Törlési hiba')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="details-section details-section--line">
       <div className="details-header">
         <h3>Bevételek</h3>
+        <div className="details-actions inline">
+          <button className="btn" type="button" onClick={() => setShowModal(true)}>
+            Új bevétel
+          </button>
+        </div>
       </div>
+
+      {error ? <div className="details-banner error">Hiba: {error}</div> : null}
+      {status ? <div className="details-banner success">{status}</div> : null}
+
       {!incomes.length ? (
         <p className="muted">Nincs rögzített bevétel.</p>
       ) : (
@@ -194,14 +295,60 @@ export function IncomesTab({ client, formatAmount }) {
               <div className="meta-value emphasis">{row.month || '-'}</div>
               <div className="meta-label">Összeg</div>
               <div className="meta-value">{formatAmount(row.amount || 0, 'HUF')}</div>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => handleDelete(row.month)}
+                disabled={saving}
+              >
+                Törlés
+              </button>
             </div>
           ))}
         </div>
       )}
+
+      {showModal ? (
+        <Modal
+          title="Bevétel hozzáadása"
+          onClose={() => {
+            setShowModal(false)
+            setError('')
+          }}
+        >
+          {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+          <form className="form-grid" onSubmit={handleSubmit}>
+            <label className="form-field">
+              <span>Hónap</span>
+              <input type="month" value={formMonth} onChange={(e) => setFormMonth(e.target.value)} disabled={saving} />
+            </label>
+            <label className="form-field">
+              <span>Összeg (HUF)</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+                disabled={saving}
+                placeholder="0"
+              />
+            </label>
+            <div className="form-actions">
+              <button className="btn ghost" type="button" onClick={() => setShowModal(false)} disabled={saving}>
+                Mégse
+              </button>
+              <button className="btn" type="submit" disabled={saving}>
+                {saving ? 'Mentés...' : 'Mentés'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
     </div>
   )
 }
-
 export function ActivityTab({ activitiesLoading, activities }) {
   return (
     <div className="details-section details-section--line">
