@@ -8,6 +8,9 @@ import ClientDetailsPage from './pages/ClientDetailsPage'
 import ClientEditPage from './pages/ClientEditPage'
 import ProfilePage from './pages/ProfilePage.jsx'
 import ClientSchemaPage from './pages/ClientSchemaPage.jsx'
+import ClientImportPage from './pages/ClientImportPage.jsx'
+import IncomeImportPage from './pages/IncomeImportPage.jsx'
+import ClientCreatePage from './pages/ClientCreatePage.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
 import { ClientSchemaProvider } from './hooks/useClientSchema.jsx'
@@ -84,6 +87,27 @@ function AppShell() {
                 Ügyfelek lista
               </NavLink>
               <NavLink
+                to="/clients/new"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setClientMenuOpen(false)}
+              >
+                Új ügyfél
+              </NavLink>
+              <NavLink
+                to="/clients/import"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setClientMenuOpen(false)}
+              >
+                Excel import
+              </NavLink>
+              <NavLink
+                to="/clients/income-import"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setClientMenuOpen(false)}
+              >
+                Bevételek import
+              </NavLink>
+              <NavLink
                 to="/client-schema"
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
@@ -126,6 +150,9 @@ function AppShell() {
           path="/clients"
           element={<ClientsPage currentUser={displayName} userProfiles={profiles || []} />}
         />
+        <Route path="/clients/new" element={<ClientCreatePage />} />
+        <Route path="/clients/import" element={<ClientImportPage />} />
+        <Route path="/clients/income-import" element={<IncomeImportPage />} />
         <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
         <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
         <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />

@@ -79,14 +79,14 @@
   left: 0;
   display: none;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-top: none;
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 10px;
+  padding: 8px;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
-  min-width: 180px;
+  min-width: 160px;
   z-index: 15;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -98,9 +98,19 @@
 
 .nav-dropdown__menu .nav-link {
   display: block;
-  border-radius: 10px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 6px 10px;
   text-align: left;
+  white-space: nowrap;
+}
+
+.nav-dropdown__menu .nav-link + .nav-link {
+  border-top: 2px solid var(--border);
+  border-radius: 0;
+}
+
+.nav-dropdown__menu .nav-link.active::after {
+  display: none;
 }
 
 .nav-controls {

@@ -5,7 +5,7 @@ import { parseWorkbook } from '../utils/xlsxParser'
 import { db } from '../firebase'
 import { mergeMonthlyIncomes, normalizeTax, parseIncomeRows } from '../features/imports/utils/incomeImport'
 
-function IncomesImportModal({ onClose, clients = [] }) {
+function IncomesImportModal({ onClose, clients = [], variant = 'modal' }) {
   const [step, setStep] = useState('upload') // upload | preview | summary
   const [rows, setRows] = useState([])
   const [error, setError] = useState('')
@@ -84,10 +84,11 @@ function IncomesImportModal({ onClose, clients = [] }) {
     }
   }
 
-  return (
-    <Modal title="Bevételek import" onClose={onClose}>
-      <div className="wizard">
-        {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+  const title = 'Bevételek import'
+
+  const inner = (
+    <div className="wizard">
+      {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
         {step === 'upload' ? (
           <div className="upload-step">
@@ -139,11 +140,11 @@ function IncomesImportModal({ onClose, clients = [] }) {
           </div>
         ) : null}
 
-        {step === 'summary' ? (
-          <div className="summary-step">
-            <div className="metric-bar">
-              <div className="metric-card">
-                <span className="metric-label">Frissítve</span>
+      {step === 'summary' ? (
+        <div className="summary-step">
+          <div className="metric-bar">
+            <div className="metric-card">
+              <span className="metric-label">Frissítve</span>
                 <span className="metric-value">{summary.updated}</span>
               </div>
               <div className="metric-card">
@@ -156,13 +157,38 @@ function IncomesImportModal({ onClose, clients = [] }) {
               </div>
             </div>
             <div className="wizard-actions">
-              <button className="btn" type="button" onClick={onClose}>
+              <button className="btn" type="button" onClick={onClose || (() => setStep('upload'))}>
                 Kész
               </button>
             </div>
           </div>
         ) : null}
-      </div>
+    </div>
+  )
+
+  if (variant === 'page') {
+    return (
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">Import</p>
+            <h1 className="section-title">{title}</h1>
+            <p className="section-subtitle">Töltsd fel az Excel-t, és frissítsd a bevételeket az ügyfelekhez igazítva.</p>
+          </div>
+          {onClose ? (
+            <button className="btn ghost" type="button" onClick={onClose}>
+              Vissza
+            </button>
+          ) : null}
+        </div>
+        {inner}
+      </section>
+    )
+  }
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      {inner}
     </Modal>
   )
 }

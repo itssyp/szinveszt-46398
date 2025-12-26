@@ -1,8 +1,7 @@
 import React from 'react'
-import { TbUpload, TbUserPlus } from 'react-icons/tb'
 import StatusBadge from '../../../components/StatusBadge'
 
-function ClientsHeader({ clientsCount, filteredCount, status, onOpenImportWizard, onOpenIncomeImport, onAddClient }) {
+function ClientsHeader({ clientsCount, filteredCount, status }) {
   return (
     <header className="section-header">
       <div className="section-header__top">
@@ -10,17 +9,6 @@ function ClientsHeader({ clientsCount, filteredCount, status, onOpenImportWizard
           <p className="eyebrow">Ügyfél törzsadatok</p>
           <h1 className="section-title">Szinveszt ügyfélkezelés</h1>
           <p className="section-subtitle">Keresés, importálás, szerkesztés egy helyen.</p>
-        </div>
-        <div className="section-header__actions">
-          <button className="btn ghost" type="button" onClick={onOpenImportWizard}>
-            <TbUpload /> Excel import (új)
-          </button>
-          <button className="btn ghost" type="button" onClick={onOpenIncomeImport}>
-            <TbUpload /> Bevételek import
-          </button>
-          <button className="btn" type="button" onClick={onAddClient}>
-            <TbUserPlus /> Új ügyfél
-          </button>
         </div>
       </div>
       <div className="metric-bar">

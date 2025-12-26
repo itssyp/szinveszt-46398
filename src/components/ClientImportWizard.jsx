@@ -16,7 +16,7 @@ import {
 
 const PREVIEW_LIMIT = 10
 
-function ClientImportWizard({ onClose, clients = [], onComplete }) {
+function ClientImportWizard({ onClose, clients = [], onComplete, variant = 'modal' }) {
   const [step, setStep] = useState('upload')
   const [parsed, setParsed] = useState(null)
   const [selectedSheet, setSelectedSheet] = useState(0)
@@ -192,11 +192,11 @@ function ClientImportWizard({ onClose, clients = [], onComplete }) {
     }
   }
 
-const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT), [preview])
+  const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT), [preview])
+  const title = 'Excel import varázsló'
 
-  return (
-    <Modal title="Excel import varázsló" onClose={onClose}>
-      <div className="wizard">
+  const inner = (
+    <div className="wizard">
         {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
 
         {step === 'upload' ? (
@@ -421,13 +421,38 @@ const previewRows = useMemo(() => preview.normalizedRows.slice(0, PREVIEW_LIMIT)
               </div>
             </div>
             <div className="wizard-actions">
-              <button className="btn" type="button" onClick={onClose}>
+              <button className="btn" type="button" onClick={onClose || (() => setStep('upload'))}>
                 Kész
               </button>
             </div>
           </div>
         ) : null}
-      </div>
+    </div>
+  )
+
+  if (variant === 'page') {
+    return (
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">Import</p>
+            <h1 className="section-title">{title}</h1>
+            <p className="section-subtitle">Töltsd fel az Excel fájlt, majd párosítsd a mezőket az ügyféladatokhoz.</p>
+          </div>
+          {onClose ? (
+            <button className="btn ghost" type="button" onClick={onClose}>
+              Vissza
+            </button>
+          ) : null}
+        </div>
+        {inner}
+      </section>
+    )
+  }
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      {inner}
     </Modal>
   )
 }

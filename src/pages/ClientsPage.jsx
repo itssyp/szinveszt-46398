@@ -1,48 +1,29 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { TbTrash } from 'react-icons/tb'
 import { db } from '../firebase'
-import ClientForm from '../components/ClientForm'
-import Modal from '../components/Modal'
 import ClientCards from '../components/ClientCards'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { useClientsCache } from '../hooks/useClientsCache'
-import ClientImportWizard from '../components/ClientImportWizard'
-import IncomesImportModal from '../components/IncomesImportModal'
 import { logClientActivity } from '../utils/clientActivity'
-import { normalizeNumericId, normalizeTaxId } from '../utils/id'
+import { normalizeTaxId } from '../utils/id'
 import { useClientFilters } from '../features/clients/hooks/useClientFilters'
 import ClientsHeader from '../features/clients/components/ClientsHeader'
 import ClientsFilterBar from '../features/clients/components/ClientsFilterBar'
 import ClientListView from '../features/clients/components/ClientListView'
 import ClientSkeletons from '../features/clients/components/ClientSkeletons'
-import { buildExistingIdSet } from '../features/clients/utils/clientDates'
-import { useClientSchema } from '../hooks/useClientSchema.jsx'
 
 function ClientsPage({ currentUser, userProfiles = [] }) {
   const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
-  const {
-    fields,
-    groups,
-    emptyClientTemplate,
-    loading: schemaLoading,
-    error: schemaError,
-  } = useClientSchema()
-  const [formData, setFormData] = useState({})
-  const [editingId, setEditingId] = useState(null)
   const [status, setStatus] = useState({ message: 'Kapcsolodas...', ok: false })
   const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [showFormModal, setShowFormModal] = useState(false)
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketAssignee, setTicketAssignee] = useState(currentUser || '')
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
-  const [showImportWizard, setShowImportWizard] = useState(false)
-  const [showIncomeImport, setShowIncomeImport] = useState(false)
   const [selectedIds, setSelectedIds] = useState([])
   const [deleting, setDeleting] = useState(false)
   const selectAllRef = useRef(null)
@@ -61,7 +42,6 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     formatStartDate,
   } = useClientFilters(clients)
 
-  const existingIds = useMemo(() => buildExistingIdSet(clients), [clients])
   const visibleIds = useMemo(() => filteredClients.map((c) => c.id), [filteredClients])
   const selectedInView = useMemo(
     () => selectedIds.filter((id) => visibleIds.includes(id)),
@@ -93,22 +73,6 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       setStatus({ message: 'Kapcsolat aktiv es adatok betoltve.', ok: true })
     }
   }, [clientsError, clientsLoading])
-
-  useEffect(() => {
-    if (!schemaLoading && emptyClientTemplate) {
-      setFormData(emptyClientTemplate)
-    }
-  }, [schemaLoading, emptyClientTemplate])
-
-  const handleChange = (key, value) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const resetForm = () => {
-    setFormData(emptyClientTemplate)
-    setEditingId(null)
-    setShowFormModal(false)
-  }
 
   const toggleSelectClient = (clientId) => {
     setSelectionMode(true)
@@ -150,39 +114,6 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       setStatus({ message: 'Nem sikerult torolni a kijelolt ugyfeleket.', ok: false })
     } finally {
       setDeleting(false)
-    }
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    try {
-      const normalizedTax = normalizeNumericId(formData.adoszam)
-      const normalizedPid = normalizeNumericId(formData.adoazonosito)
-      if (!editingId) {
-        if (normalizedTax && existingIds.has(`tax:${normalizedTax}`)) {
-          throw new Error('Mar letezik ugyfel ezzel az adoszammal.')
-        }
-        if (normalizedPid && existingIds.has(`pid:${normalizedPid}`)) {
-          throw new Error('Mar letezik ugyfel ezzel az adoazonositoval.')
-        }
-      }
-
-      if (editingId) {
-        const ref = doc(db, 'clients', editingId)
-        await updateDoc(ref, formData)
-        setStatus({ message: 'Ugyfel frissitve.', ok: true })
-      } else {
-        await addDoc(collection(db, 'clients'), formData)
-        setStatus({ message: 'Uj ugyfel rogzitve.', ok: true })
-      }
-      resetForm()
-    } catch (err) {
-      setError(err.message || 'Mentesi hiba')
-      setStatus({ message: 'Mentes sikertelen.', ok: false })
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -253,25 +184,15 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     })
   }
 
-  const formDisabled = schemaLoading || !fields.length
-
   return (
     <main className="page-container">
       <ClientsHeader
         clientsCount={clients.length}
         filteredCount={filteredClients.length}
         status={status}
-        onOpenImportWizard={() => setShowImportWizard(true)}
-        onOpenIncomeImport={() => setShowIncomeImport(true)}
-        onAddClient={() => {
-          setFormData(emptyClientTemplate)
-          setEditingId(null)
-          setShowFormModal(true)
-        }}
       />
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
-      {schemaError ? <div className="banner banner-error">Sema hiba: {schemaError}</div> : null}
 
       <ClientsFilterBar
         searchTerm={searchTerm}
@@ -354,37 +275,6 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
           )}
         </section>
       )}
-
-      {showFormModal ? (
-        <Modal onClose={resetForm} title={editingId ? 'Ugyfel szerkesztese' : 'Uj ugyfel'}>
-          <ClientForm
-            fields={fields}
-            groups={groups}
-            formData={formData}
-            onChange={handleChange}
-            onSubmit={handleSubmit}
-            onReset={resetForm}
-            editingId={editingId}
-            saving={saving || formDisabled}
-          />
-          {schemaLoading ? <p className="muted">Sema betoltese...</p> : null}
-        </Modal>
-      ) : null}
-
-      {showImportWizard ? (
-        <ClientImportWizard
-          onClose={() => setShowImportWizard(false)}
-          clients={clients}
-          onComplete={(result) =>
-            setStatus({
-              message: `Import kesz. Uj: ${result.created}, frissitett: ${result.updated}, kihagyva: ${result.skipped}.`,
-              ok: true,
-            })
-          }
-        />
-      ) : null}
-
-      {showIncomeImport ? <IncomesImportModal onClose={() => setShowIncomeImport(false)} clients={clients} /> : null}
 
       {ticketClient ? (
         <TicketCreateModal
