@@ -1,8 +1,62 @@
+html.login-page,
+body.login-page,
+#root.login-page-root {
+  --login-split: 45%;
+  --login-accent: color-mix(in srgb, var(--accent) 94%, #0b766c);
+  --login-bg: linear-gradient(
+    90deg,
+    var(--login-accent) 0%,
+    var(--login-accent) calc(var(--login-split) - 2%),
+    color-mix(in srgb, var(--accent) 85%, #0e8c81) calc(var(--login-split) - 1%),
+    #f8fafc calc(var(--login-split) + 1%),
+    #f3f6fb 100%
+  );
+  background-image: radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.14), transparent 48%),
+    var(--bg),
+    var(--login-bg);
+  background-color: #f8fafc;
+  color: #0f172a;
+  background-attachment: scroll, scroll, scroll;
+  background-size: 140% 140%, auto, 100% 100%;
+  background-repeat: no-repeat, repeat, repeat-y;
+  background-position: top left, center, top left;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+}
+
+body.login-page::before {
+  content: '';
+  position: fixed;
+  inset: -18% -18% auto -18%;
+  height: 520px;
+  background: radial-gradient(circle at 22% 22%, rgba(255, 255, 255, 0.18), transparent 46%),
+    radial-gradient(circle at 78% 48%, rgba(255, 255, 255, 0.12), transparent 52%);
+  filter: blur(48px);
+  opacity: 0.45;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .login-layout {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 45% 55%;
-  background: var(--bg);
+  background-image: radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.14), transparent 48%),
+    var(--bg),
+    var(--login-bg, var(--bg));
+  background-repeat: no-repeat, repeat, repeat-y;
+  background-size: 140% 140%, auto, 100% 100%;
+  background-position: top left, center, top left;
+}
+
+#root.login-page-root {
+  min-height: 100vh;
+  background-image: radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.14), transparent 48%),
+    var(--bg),
+    var(--login-bg, var(--bg));
+  background-repeat: no-repeat, repeat, repeat-y;
+  background-size: 140% 140%, auto, 100% 100%;
+  background-position: top left, center, top left;
 }
 
 .login-brand {

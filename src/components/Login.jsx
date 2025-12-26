@@ -1,8 +1,20 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 function Login({ onSubmit, error, loading }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+
+  useEffect(() => {
+    const root = document.getElementById('root')
+    document.body.classList.add('login-page')
+    document.documentElement.classList.add('login-page')
+    root?.classList.add('login-page-root')
+    return () => {
+      document.body.classList.remove('login-page')
+      document.documentElement.classList.remove('login-page')
+      root?.classList.remove('login-page-root')
+    }
+  }, [])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
