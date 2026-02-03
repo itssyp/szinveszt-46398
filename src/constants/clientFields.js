@@ -20,12 +20,17 @@ export const defaultFieldDefinitions = [
   { key: 'kapuseged', label: 'Kapusegéd', type: 'boolean' },
   { key: 'viki', label: 'Viki', type: 'boolean' },
   { key: 'relax', label: 'Relax', type: 'boolean' },
+  { key: 'foodora', label: 'Foodora', type: 'boolean' },
+  { key: 'wolt', label: 'Wolt', type: 'boolean' },
+  { key: 'egyebTevekenyseg', label: 'Egyéb tevékenység', type: 'boolean' },
   {
     key: 'meghat',
     label: 'Meghatalmazás',
     type: 'select',
     options: ['Elfogadva', 'Jóváhagyásra vár', 'Levéve', 'Hiányzik'],
   },
+  { key: 'jogviszonyValtozas', label: 'Jogviszony változás' },
+  { key: 'hozzarendeltSzemely', label: 'Hozzárendelt személy', type: 'select', options: ['Fanni', 'Szilvi'] },
   { key: 'kezdesDatuma', label: 'Kezdés dátuma', type: 'date' },
   { key: 'szuletesiIdo', label: 'Születési idő', type: 'date' },
   { key: 'szekhely', label: 'Székhely' },
@@ -67,6 +72,8 @@ export const defaultFieldDefinitions = [
     type: 'select',
     options: ['Havi', 'Félévi', 'Éves', 'Egyéb'],
   },
+  { key: 'utalandoGyakorisag', label: 'Utalando gyakorisag', type: 'select', options: ['Havi', 'Negyedeves', 'VIKI automata'] },
+  { key: 'billingoDebt', label: 'Tartozas (Billingo)' },
   {
     key: 'tartozas',
     label: 'Tartozás',
@@ -95,6 +102,8 @@ export const defaultFieldDefinitions = [
   { key: 'kedvezmenyek', label: 'Kedvezmények' },
   { key: 'megszunesDatuma', label: 'Megszűnés dátuma', type: 'date' },
   { key: 'szunetKezdete', label: 'Szünet kezdete', type: 'date' },
+  { key: 'lemondasDatuma', label: 'Lemondás dátuma', type: 'date' },
+  { key: 'jogviszonyvaltasDatuma', label: 'Jogviszonyváltás dátuma', type: 'date' },
   { key: 'navOnlineActive', label: 'NAV 2.0 adatkeresés aktív', type: 'boolean' },
   { key: 'navOnlineUser', label: 'NAV felhasználónév' },
   { key: 'navOnlinePassword', label: 'NAV jelszó' },
@@ -106,11 +115,11 @@ export const defaultFieldDefinitions = [
 export const defaultFieldGroups = [
   {
     title: 'Általános',
-    keys: ['nev', 'statusz', 'nyelv', 'torzs', 'szuletesiIdo', 'munkavegzesJellege'],
+    keys: ['nev', 'statusz', 'nyelv', 'torzs', 'tajszam', 'szuletesiIdo', 'munkavegzesJellege'],
   },
   {
     title: 'Kapcsolat',
-    keys: ['email', 'telefonszam', 'szekhely'],
+    keys: ['szekhely', 'email', 'telefonszam'],
   },
   {
     title: 'Adózás',
@@ -118,15 +127,15 @@ export const defaultFieldGroups = [
   },
   {
     title: 'Dátumok',
-    keys: ['kezdesDatuma', 'megszunesDatuma', 'szunetKezdete'],
+    keys: ['kezdesDatuma', 'megszunesDatuma', 'szunetKezdete', 'lemondasDatuma', 'jogviszonyvaltasDatuma'],
   },
   {
     title: 'Pénzügy',
-    keys: ['tartozas', 'tartozasOsszeg2025', 'cegSzamlazas', 'szamlazas'],
+    keys: ['billingoDebt', 'tartozas', 'tartozasOsszeg2025', 'cegSzamlazas', 'szamlazas', 'utalandoGyakorisag'],
   },
   {
     title: 'Egyéb',
-    keys: ['kapuseged', 'viki', 'relax', 'meghat'],
+    keys: ['kapuseged', 'viki', 'relax', 'foodora', 'wolt', 'egyebTevekenyseg', 'jogviszonyValtozas', 'hozzarendeltSzemely', 'meghat'],
   },
   {
     title: 'NAV online számla',

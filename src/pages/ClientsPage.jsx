@@ -34,8 +34,8 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
   )
 
   const {
-    filters: { searchTerm, statusFilter, startYear, startMonth, sortBy, viewMode },
-    setters: { setSearchTerm, setStatusFilter, setStartYear, setStartMonth, setSortBy },
+    filters: { searchTerm, statusFilter, debtFilter, startYear, startMonth, sortBy, viewMode },
+    setters: { setSearchTerm, setStatusFilter, setDebtFilter, setStartYear, setStartMonth, setSortBy },
     toggleViewMode,
     filteredClients,
     availableYears,
@@ -100,7 +100,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
 
   const handleDeleteSelected = async () => {
     if (!selectedIds.length) return
-    const confirmed = window.confirm('Biztosan torolni szeretned a kijelolt ugyfeleket?')
+    const confirmed = window.confirm('Biztosan törölni szeretnéd a kijelölt ügyfeleket?')
     if (!confirmed) return
     setDeleting(true)
     setError('')
@@ -108,10 +108,10 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       await Promise.all(selectedIds.map((id) => deleteDoc(doc(db, 'clients', id))))
       setSelectedIds([])
       setSelectionMode(false)
-      setStatus({ message: 'Kijelolt ugyfelek torolve.', ok: true })
+      setStatus({ message: 'Kijelölt ügyfelek sikeresen törölve.', ok: true })
     } catch (err) {
-      setError(err.message || 'Torles sikertelen')
-      setStatus({ message: 'Nem sikerult torolni a kijelolt ugyfeleket.', ok: false })
+      setError(err.message || 'Törlés sikertelen')
+      setStatus({ message: 'Nem sikerült törölni a kijelölt ügyfeleket.', ok: false })
     } finally {
       setDeleting(false)
     }
@@ -126,7 +126,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
 
   const handleCreateTicket = async () => {
     if (!ticketClient || !ticketDescription.trim() || !ticketAssignee) {
-      setTicketError('Add meg a leirast es a felelost.')
+      setTicketError('Add meg a leírást és a felelőst.')
       return
     }
     try {
@@ -134,7 +134,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       setTicketError('')
       const ref = await addDoc(collection(db, 'tickets'), {
         clientId: ticketClient.id,
-        clientName: ticketClient.nev || 'Ismeretlen ugyfel',
+        clientName: ticketClient.nev || 'Ismeretlen ügyfel',
         description: ticketDescription.trim(),
         status: 'Nyitott',
         createdBy: currentUser || 'Ismeretlen',
@@ -152,9 +152,9 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       })
       setTicketClient(null)
       setTicketDescription('')
-      setStatus({ message: 'Ticket letrehozva.', ok: true })
+      setStatus({ message: 'Ticket létrehozva.', ok: true })
     } catch (err) {
-      setTicketError(err.message || 'Ticket letrehozasa sikertelen')
+      setTicketError(err.message || 'Ticket létrehozása sikertelen')
       setStatus({ message: 'Hiba ticket letrehozasakor.', ok: false })
     } finally {
       setTicketSaving(false)
@@ -184,6 +184,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     })
   }
 
+
   return (
     <main className="page-container">
       <ClientsHeader
@@ -197,6 +198,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       <ClientsFilterBar
         searchTerm={searchTerm}
         statusFilter={statusFilter}
+        debtFilter={debtFilter}
         startYear={startYear}
         startMonth={startMonth}
         sortBy={sortBy}
@@ -204,6 +206,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
         availableYears={availableYears}
         onSearchChange={setSearchTerm}
         onStatusChange={setStatusFilter}
+        onDebtChange={setDebtFilter}
         onYearChange={setStartYear}
         onMonthChange={setStartMonth}
         onSortChange={setSortBy}
@@ -220,13 +223,13 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
               onChange={toggleSelectAllVisible}
               aria-label="Select all clients in view"
             />
-            <span>Kijeloles ezen a listan</span>
+            <span>Kijelölés ezen a listán</span>
           </label>
           <div className="selection-bar__actions">
-            <span className="pill">{selectedIds.length} kivalasztva</span>
-            <button className="btn ghost" type="button" onClick={clearSelection} disabled={!selectedIds.length}>
+            <span className="pill">{selectedIds.length} kiválasztva</span>
+            {/* <button className="btn ghost" type="button" onClick={clearSelection} disabled={!selectedIds.length}>
               Kijeloles torlese
-            </button>
+            </button> */}
             <button
               className="btn ghost danger"
               type="button"

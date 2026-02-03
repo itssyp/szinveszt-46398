@@ -4,8 +4,16 @@ import { formatClientStartDate, parseClientStartDate } from '../utils/clientDate
 export const defaultViewMode = 'cards'
 
 export function useClientFilters(clients = [], initialView = defaultViewMode) {
+  const normalizeStatus = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/[^a-z]/gi, '')
+      .toLowerCase()
+
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [debtFilter, setDebtFilter] = useState('')
   const [startYear, setStartYear] = useState('')
   const [startMonth, setStartMonth] = useState('')
   const [sortBy, setSortBy] = useState('name')
@@ -21,8 +29,18 @@ export function useClientFilters(clients = [], initialView = defaultViewMode) {
             const tax = (client.adoszam || '').toLowerCase()
             if (!name.includes(term) && !tax.includes(term)) return false
           }
-          if (statusFilter && (client.statusz || '').toLowerCase() !== statusFilter.toLowerCase()) {
-            return false
+          if (statusFilter) {
+            const normClient = normalizeStatus(client.statusz)
+            const normFilter = normalizeStatus(statusFilter)
+            const isSzunet = normFilter.startsWith('szunet') && normClient.startsWith('szunet')
+            if (!isSzunet && normClient !== normFilter) {
+              return false
+            }
+          }
+          if (debtFilter) {
+            const debtValue = Number(client.billingoDebt) || 0
+            if (debtFilter === 'has' && debtValue <= 0) return false
+            if (debtFilter === 'none' && debtValue > 0) return false
           }
           const start = parseClientStartDate(client)
           if (startYear && (!start || start.getFullYear().toString() !== startYear)) {
@@ -44,7 +62,7 @@ export function useClientFilters(clients = [], initialView = defaultViewMode) {
           const nameB = (b.nev || '').toLowerCase()
           return nameA.localeCompare(nameB, 'hu')
         }),
-    [clients, searchTerm, statusFilter, startYear, startMonth, sortBy]
+    [clients, searchTerm, statusFilter, debtFilter, startYear, startMonth, sortBy]
   )
 
   const availableYears = useMemo(() => {
@@ -64,6 +82,7 @@ export function useClientFilters(clients = [], initialView = defaultViewMode) {
     filters: {
       searchTerm,
       statusFilter,
+      debtFilter,
       startYear,
       startMonth,
       sortBy,
@@ -72,6 +91,7 @@ export function useClientFilters(clients = [], initialView = defaultViewMode) {
     setters: {
       setSearchTerm,
       setStatusFilter,
+      setDebtFilter,
       setStartYear,
       setStartMonth,
       setSortBy,

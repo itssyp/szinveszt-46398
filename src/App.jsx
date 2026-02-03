@@ -11,6 +11,7 @@ import ClientSchemaPage from './pages/ClientSchemaPage.jsx'
 import ClientImportPage from './pages/ClientImportPage.jsx'
 import IncomeImportPage from './pages/IncomeImportPage.jsx'
 import ClientCreatePage from './pages/ClientCreatePage.jsx'
+import ClientExportPage from './pages/ClientExportPage.jsx'
 import Bevallas58Page from './pages/Bevallas58Page.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
@@ -118,6 +119,13 @@ function AppShell() {
               >
                 Séma szerkesztő
               </NavLink>
+              <NavLink
+                to="/clients/export"
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                onClick={() => setClientMenuOpen(false)}
+              >
+                Excel export
+              </NavLink>
             </div>
           </div>
           <div
@@ -177,6 +185,7 @@ function AppShell() {
         />
         <Route path="/clients/new" element={<ClientCreatePage />} />
         <Route path="/clients/import" element={<ClientImportPage />} />
+        <Route path="/clients/export" element={<ClientExportPage />} />
         <Route path="/clients/income-import" element={<IncomeImportPage />} />
         <Route path="/clients/tax/:taxNumber" element={<ClientDetailsPage />} />
         <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />

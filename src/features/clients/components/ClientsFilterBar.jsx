@@ -7,6 +7,7 @@ const monthOptions = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'
 function ClientsFilterBar({
   searchTerm,
   statusFilter,
+  debtFilter,
   startYear,
   startMonth,
   sortBy,
@@ -14,6 +15,7 @@ function ClientsFilterBar({
   availableYears = [],
   onSearchChange,
   onStatusChange,
+  onDebtChange,
   onYearChange,
   onMonthChange,
   onSortChange,
@@ -38,6 +40,14 @@ function ClientsFilterBar({
               <option value="Aktiv">Aktív</option>
               <option value="Szunetel">Szünetel</option>
               <option value="Megszunt">Megszűnt</option>
+            </select>
+          </label>
+          <label className="filter-control">
+            <span>Billingo tartozás</span>
+            <select value={debtFilter} onChange={(e) => onDebtChange(e.target.value)}>
+              <option value="">Mind</option>
+              <option value="has">Van</option>
+              <option value="none">Nincs</option>
             </select>
           </label>
           <label className="filter-control">

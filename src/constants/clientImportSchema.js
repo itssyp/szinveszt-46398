@@ -8,11 +8,24 @@ const baseNormalizer = (value) => {
 
 const normalizeEmail = (value) => baseNormalizer(value).toLowerCase()
 const normalizePhone = (value) => baseNormalizer(value).replace(/\s+/g, '').replace(/[^\d+]/g, '')
+const excelSerialToIso = (serial) => {
+  if (!Number.isFinite(serial) || serial <= 0) return ''
+  const excelEpoch = Date.UTC(1899, 11, 30)
+  const millis = excelEpoch + serial * 24 * 60 * 60 * 1000
+  const date = new Date(millis)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
+}
 const normalizeDate = (value) => {
   if (!value) return ''
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
+  if (typeof value === 'number') return excelSerialToIso(value)
   const str = baseNormalizer(value)
   if (!str) return ''
+  if (/^\d+(\.\d+)?$/.test(str)) {
+    const asNumber = Number(str)
+    return excelSerialToIso(asNumber)
+  }
   const d = new Date(str)
   if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
   return ''
@@ -33,8 +46,11 @@ const emailValidator = (value) => {
 
 const phoneValidator = (value) => {
   if (!value) return null
-  const digits = value.replace(/[^\d]/g, '')
-  if (digits.length < 7) return 'Túl rövid telefonszám'
+  const raw = String(value).trim()
+  if (!raw) return null
+  const digits = raw.replace(/[^\d]/g, '')
+  if (!digits || digits === '0') return null
+  if (digits.length < 7) return 'Tul rovid telefonszam'
   return null
 }
 
@@ -120,3 +136,4 @@ export const clientImportSchema = defaultFieldDefinitions.map((field) => {
 })
 
 export const REQUIRED_FIELDS = clientImportSchema.filter((f) => f.required).map((f) => f.key)
+

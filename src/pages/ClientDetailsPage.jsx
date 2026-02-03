@@ -104,10 +104,12 @@ function ClientDetailsPage() {
 
   const generalGroups = useMemo(
     () =>
-      groups.map((g) => ({
-        ...g,
-        keys: g.keys.filter((key) => !NAV_KEYS.includes(key)),
-      })),
+      (groups || [])
+        .map((g) => ({
+          ...g,
+          keys: (g.keys || []).filter((key) => !NAV_KEYS.includes(key)),
+        }))
+        .filter((g) => g.keys.length > 0),
     [groups]
   )
 
