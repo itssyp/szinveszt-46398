@@ -97,10 +97,12 @@ function ClientDetailsPage() {
   }, [docId])
 
   const title = useMemo(() => client?.nev || 'Ügyfél', [client])
-  const assigneeOptions = useMemo(
-    () => Array.from(new Set((profiles || []).map((p) => p.username).filter(Boolean))),
-    [profiles]
-  )
+  const assigneeOptions = useMemo(() => {
+    const names = (profiles || [])
+      .map((p) => (p.username || p.email || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [profiles])
 
   const generalGroups = useMemo(
     () =>

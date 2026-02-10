@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { TbArrowDown, TbArrowUp, TbPlus, TbTrash } from 'react-icons/tb'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
+import { useUserProfile } from '../hooks/useUserProfile.jsx'
 
 const FIELD_TYPES = ['text', 'select', 'multiselect', 'boolean', 'date']
 
@@ -21,6 +22,7 @@ const toKey = (label, fallback = 'customField') => {
 
 function ClientSchemaPage() {
   const { fields, groups, defaultFieldKeys, loading, error, saving, saveSchema } = useClientSchema()
+  const { profiles } = useUserProfile()
   const [localFields, setLocalFields] = useState([])
   const [localGroups, setLocalGroups] = useState([])
   const [status, setStatus] = useState('')
@@ -38,6 +40,17 @@ function ClientSchemaPage() {
     () => localFields.reduce((acc, f) => ({ ...acc, [f.key]: f }), {}),
     [localFields]
   )
+  const assigneeOptions = useMemo(() => {
+    const names = (profiles || [])
+      .map((p) => (p.username || p.email || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [profiles])
+  const getMergedOptions = (field) => {
+    if (!field || field.key !== 'hozzarendeltSzemely') return field?.options || []
+    const baseOptions = Array.isArray(field.options) ? field.options : []
+    return Array.from(new Set([...baseOptions, ...assigneeOptions]))
+  }
 
   const moveGroup = (index, dir) => {
     const target = index + dir
@@ -273,6 +286,11 @@ function ClientSchemaPage() {
                                 disabled={isDefault}
                                 placeholder="Opció1, Opció2"
                               />
+                              {field.key === 'hozzarendeltSzemely' ? (
+                                <span className="muted">
+                                  Elo opciok (automatikus): {getMergedOptions(field).join(', ') || 'Nincs'}
+                                </span>
+                              ) : null}
                             </label>
                           )}
                           {isDefault ? <p className="muted">Alap mező - nem törölhető.</p> : null}

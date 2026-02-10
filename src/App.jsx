@@ -13,6 +13,8 @@ import IncomeImportPage from './pages/IncomeImportPage.jsx'
 import ClientCreatePage from './pages/ClientCreatePage.jsx'
 import ClientExportPage from './pages/ClientExportPage.jsx'
 import Bevallas58Page from './pages/Bevallas58Page.jsx'
+import MonthlyTasksPage from './pages/MonthlyTasksPage.jsx'
+import MonthlyTaskDetailPage from './pages/MonthlyTaskDetailPage.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
 import { ClientSchemaProvider } from './hooks/useClientSchema.jsx'
@@ -156,6 +158,12 @@ function AppShell() {
             Ticketek
           </NavLink>
           <NavLink
+            to="/tasks"
+            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+          >
+            Feladatok
+          </NavLink>
+          <NavLink
             to="/debts"
             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
           >
@@ -191,6 +199,8 @@ function AppShell() {
         <Route path="/clients/id/:clientId" element={<ClientDetailsPage />} />
         <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />
         <Route path="/bevallas/58" element={<Bevallas58Page />} />
+        <Route path="/tasks" element={<MonthlyTasksPage />} />
+        <Route path="/tasks/:year/:month" element={<MonthlyTaskDetailPage />} />
         <Route
           path="/tickets"
           element={<TicketsPage currentUser={displayName} userProfiles={profiles || []} />}

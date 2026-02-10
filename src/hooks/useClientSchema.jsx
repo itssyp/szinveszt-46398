@@ -10,6 +10,8 @@ import { db } from '../firebase'
 
 const ClientSchemaContext = createContext(null)
 
+const REMOVED_FIELD_KEYS = new Set(['tartozas', 'tartozasOsszeg2025'])
+
 const LABEL_ACCENTS = {
   torzs: 'Törzs',
   nev: 'Név',
@@ -24,9 +26,9 @@ const LABEL_ACCENTS = {
   relax: 'Relax',
   foodora: 'Foodora',
   wolt: 'Wolt',
-  egyebTevekenyseg: 'Egy?b tev?kenys?g',
-  jogviszonyValtozas: 'Jogviszony valtozas',
-  hozzarendeltSzemely: 'Hozzarendelt szemely',
+  tevekenyseg: 'Tevékenység',
+  jogviszonyValtozas: 'Jogviszony változás',
+  hozzarendeltSzemely: 'Hozzárendelt személy',
   meghat: 'Meghatalmazás',
   kezdesDatuma: 'Kezdés dátuma',
   szuletesiIdo: 'Születési idő',
@@ -38,15 +40,14 @@ const LABEL_ACCENTS = {
   email: 'E-mail cím',
   telefonszam: 'Telefonszám',
   cegSzamlazas: 'Cég - számlázás',
-  utalandoGyakorisag: 'Utalando gyakorisag',
+  utalandoGyakorisag: 'Utalandó gyakoriság',
   szamlazas: 'Számlázás',
-  tartozas: 'Tartozás',
-  tartozasOsszeg2025: 'Tartozás havidíj 2025',
+  tappenz: 'Táppénz',
   kedvezmenyek: 'Kedvezmények',
   megszunesDatuma: 'Megszűnés dátuma',
   szunetKezdete: 'Szünet kezdete',
-  lemondasDatuma: 'Lemondas datuma',
-  jogviszonyvaltasDatuma: 'Jogviszonyvaltas datuma',
+  lemondasDatuma: 'Lemondás dátuma',
+  jogviszonyvaltasDatuma: 'Jogviszonyváltás dátuma',
   navOnlineActive: 'NAV 2.0 adatkeresés aktív',
   navOnlineUser: 'NAV felhasználónév',
   navOnlinePassword: 'NAV jelszó',
@@ -85,22 +86,6 @@ const OPTION_ACCENTS = {
     'Fel evi': 'Félévi',
     Eves: 'Éves',
     Egyeb: 'Egyéb',
-  },
-  tartozas: {
-    Megszunes: 'Megszűnés',
-    Szunet: 'Szünet',
-    Egyeb: 'Egyéb',
-  },
-  tartozasOsszeg2025: {
-    Januar: 'Január',
-    Februar: 'Február',
-    Marcius: 'Március',
-    Aprilis: 'Április',
-    Majus: 'Május',
-    Junius: 'Június',
-    Julius: 'Július',
-    Oktober: 'Október',
-    December: 'December',
   },
 }
 
@@ -170,7 +155,9 @@ const applyAccents = (fields, groups) => {
 }
 
 const mergeSchema = (saved) => {
-  const savedFields = Array.isArray(saved?.fields) ? saved.fields : []
+  const savedFields = Array.isArray(saved?.fields)
+    ? saved.fields.filter((field) => !REMOVED_FIELD_KEYS.has(field.key))
+    : []
   const savedFieldMap = savedFields.reduce((acc, f) => ({ ...acc, [f.key]: f }), {})
 
   const mergedFields = [
@@ -184,7 +171,9 @@ const mergeSchema = (saved) => {
   const cleanedGroups = groups.map((g) => ({
     title: g.title || 'Csoport',
     keys: Array.isArray(g.keys)
-      ? g.keys.filter((key) => mergedFields.find((f) => f.key === key))
+      ? g.keys.filter(
+          (key) => !REMOVED_FIELD_KEYS.has(key) && mergedFields.find((f) => f.key === key)
+        )
       : [],
   }))
 

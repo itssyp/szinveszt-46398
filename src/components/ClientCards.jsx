@@ -1,7 +1,8 @@
-import React from 'react'
+﻿import React from 'react'
 
 export const statusClass = (status) => {
   const value = (status || '').toString().toLowerCase()
+  if (value.includes('lemondta')) return 'dot dot-blue'
   if (value.includes('akt')) return 'dot dot-green'
   if (value.includes('szun')) return 'dot dot-yellow'
   if (value.includes('hold')) return 'dot dot-yellow'

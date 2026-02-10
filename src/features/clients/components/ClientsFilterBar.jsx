@@ -1,4 +1,4 @@
-import React from 'react'
+﻿import React from 'react'
 import { TbLayoutGrid, TbList } from 'react-icons/tb'
 import { defaultViewMode } from '../hooks/useClientFilters'
 
@@ -13,6 +13,7 @@ function ClientsFilterBar({
   sortBy,
   viewMode = defaultViewMode,
   availableYears = [],
+  availableStatuses = [],
   onSearchChange,
   onStatusChange,
   onDebtChange,
@@ -37,9 +38,11 @@ function ClientsFilterBar({
             <span>Státusz</span>
             <select value={statusFilter} onChange={(e) => onStatusChange(e.target.value)}>
               <option value="">Mind</option>
-              <option value="Aktiv">Aktív</option>
-              <option value="Szunetel">Szünetel</option>
-              <option value="Megszunt">Megszűnt</option>
+              {availableStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
             </select>
           </label>
           <label className="filter-control">
@@ -99,6 +102,7 @@ function ClientsFilterBar({
 ClientsFilterBar.defaultProps = {
   viewMode: defaultViewMode,
   availableYears: [],
+  availableStatuses: [],
 }
 
 export default ClientsFilterBar

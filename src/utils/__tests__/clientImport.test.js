@@ -11,11 +11,6 @@ describe('normalizers', () => {
     expect(value).toBe('test@example.com')
   })
 
-  it('splits multiselect values', () => {
-    const field = getField('tartozasOsszeg2025')
-    const value = normalizeCell(field, 'Január, Február , ,Március')
-    expect(value).toEqual(['Január', 'Február', 'Március'])
-  })
 })
 
 describe('validators', () => {

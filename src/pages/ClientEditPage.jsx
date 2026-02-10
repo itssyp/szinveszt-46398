@@ -62,7 +62,7 @@ function ClientEditPage() {
   const [error, setError] = useState('')
   const [formInitialized, setFormInitialized] = useState(false)
   const { user } = useAuth()
-  const { profile } = useUserProfile()
+  const { profile, profiles } = useUserProfile()
   const [showConfirmLeave, setShowConfirmLeave] = useState(false)
   const [pendingNav, setPendingNav] = useState(null)
 
@@ -80,6 +80,22 @@ function ClientEditPage() {
     if (user?.email) return user.email.split('@')[0]
     return 'Ismeretlen'
   }, [user, profile])
+  const assigneeOptions = useMemo(() => {
+    const names = (profiles || [])
+      .map((p) => (p.username || p.email || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [profiles])
+  const fieldsWithAssignees = useMemo(
+    () =>
+      fields.map((field) => {
+        if (field.key !== 'hozzarendeltSzemely') return field
+        const baseOptions = Array.isArray(field.options) ? field.options : []
+        const mergedOptions = Array.from(new Set([...baseOptions, ...assigneeOptions]))
+        return { ...field, options: mergedOptions }
+      }),
+    [fields, assigneeOptions]
+  )
 
   useEffect(() => {
     if (clientsError) setError(clientsError)
@@ -172,7 +188,7 @@ function ClientEditPage() {
 
         {client ? (
           <ClientForm
-            fields={fields}
+            fields={fieldsWithAssignees}
             groups={groups}
             formData={formData}
             onChange={handleChange}

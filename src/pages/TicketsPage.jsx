@@ -45,16 +45,11 @@ function TicketsPage({ currentUser }) {
   }, [profiles])
 
   const assigneeOptions = useMemo(() => {
-    const names = new Set()
-    profiles.forEach((p) => {
-      if (p.username) names.add(p.username)
-    })
-    tickets.forEach((t) => {
-      if (t.assignedTo) names.add(t.assignedTo)
-    })
-    if (currentUser) names.add(currentUser)
-    return Array.from(names)
-  }, [profiles, tickets, currentUser])
+    const names = profiles
+      .map((p) => (p.username || p.email || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [profiles])
 
   const filteredTickets = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()

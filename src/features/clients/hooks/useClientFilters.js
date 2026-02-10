@@ -74,6 +74,19 @@ export function useClientFilters(clients = [], initialView = defaultViewMode) {
     return Array.from(years).sort((a, b) => b.localeCompare(a))
   }, [clients])
 
+  const availableStatuses = useMemo(() => {
+    const byNormalized = new Map()
+    clients.forEach((client) => {
+      const raw = String(client?.statusz || '').trim()
+      if (!raw) return
+      const normalized = normalizeStatus(raw)
+      if (!normalized || byNormalized.has(normalized)) return
+      byNormalized.set(normalized, raw)
+    })
+
+    return Array.from(byNormalized.values()).sort((a, b) => a.localeCompare(b, 'hu'))
+  }, [clients])
+
   const formatStartDate = (client) => formatClientStartDate(client)
 
   const toggleViewMode = () => setViewMode((prev) => (prev === 'cards' ? 'list' : 'cards'))
@@ -100,6 +113,7 @@ export function useClientFilters(clients = [], initialView = defaultViewMode) {
     toggleViewMode,
     filteredClients,
     availableYears,
+    availableStatuses,
     formatStartDate,
   }
 }

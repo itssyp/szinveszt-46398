@@ -31,7 +31,7 @@ function Login({ onSubmit, error, loading }) {
             <h1>SZINVESZT</h1>
             <p className="login-brand__subtitle">Adatvezérelt ügyfélkezelés, egyetlen biztonságos felületen.</p>
             <p className="login-brand__copy">
-              Kövesd a státuszokat, rögzítsd az ügyeket és importáld az adatokat egy lépésben. Minden, mindenre, egyhelyen.
+              Kövesd a státuszokat, rögzítsd az ügyeket és importáld az adatokat egy lépésben. Minden, mindenre, egy helyen.
             </p>
           </div>
         </div>

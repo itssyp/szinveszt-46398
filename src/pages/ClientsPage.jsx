@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addDoc, collection, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { TbTrash } from 'react-icons/tb'
@@ -17,7 +17,7 @@ import ClientSkeletons from '../features/clients/components/ClientSkeletons'
 function ClientsPage({ currentUser, userProfiles = [] }) {
   const navigate = useNavigate()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
-  const [status, setStatus] = useState({ message: 'Kapcsolodas...', ok: false })
+  const [status, setStatus] = useState({ message: 'Kapcsolódás...', ok: false })
   const [error, setError] = useState('')
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
@@ -28,10 +28,12 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
   const [deleting, setDeleting] = useState(false)
   const selectAllRef = useRef(null)
   const [selectionMode, setSelectionMode] = useState(false)
-  const assigneeOptions = useMemo(
-    () => Array.from(new Set((userProfiles || []).map((p) => p.username).filter(Boolean))),
-    [userProfiles]
-  )
+  const assigneeOptions = useMemo(() => {
+    const names = (userProfiles || [])
+      .map((p) => (p.username || p.email || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [userProfiles])
 
   const {
     filters: { searchTerm, statusFilter, debtFilter, startYear, startMonth, sortBy, viewMode },
@@ -39,6 +41,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     toggleViewMode,
     filteredClients,
     availableYears,
+    availableStatuses,
     formatStartDate,
   } = useClientFilters(clients)
 
@@ -70,7 +73,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       setError(clientsError)
       setStatus({ message: 'Hiba a Firestore kapcsolatban.', ok: false })
     } else if (!clientsLoading) {
-      setStatus({ message: 'Kapcsolat aktiv es adatok betoltve.', ok: true })
+      setStatus({ message: 'Kapcsolat aktív és adatok betöltve.', ok: true })
     }
   }, [clientsError, clientsLoading])
 
@@ -134,7 +137,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       setTicketError('')
       const ref = await addDoc(collection(db, 'tickets'), {
         clientId: ticketClient.id,
-        clientName: ticketClient.nev || 'Ismeretlen ügyfel',
+        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
         description: ticketDescription.trim(),
         status: 'Nyitott',
         createdBy: currentUser || 'Ismeretlen',
@@ -155,7 +158,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       setStatus({ message: 'Ticket létrehozva.', ok: true })
     } catch (err) {
       setTicketError(err.message || 'Ticket létrehozása sikertelen')
-      setStatus({ message: 'Hiba ticket letrehozasakor.', ok: false })
+      setStatus({ message: 'Hiba ticket létrehozásakor.', ok: false })
     } finally {
       setTicketSaving(false)
     }
@@ -184,7 +187,6 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     })
   }
 
-
   return (
     <main className="page-container">
       <ClientsHeader
@@ -204,6 +206,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
         sortBy={sortBy}
         viewMode={viewMode}
         availableYears={availableYears}
+        availableStatuses={availableStatuses}
         onSearchChange={setSearchTerm}
         onStatusChange={setStatusFilter}
         onDebtChange={setDebtFilter}
@@ -228,7 +231,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
           <div className="selection-bar__actions">
             <span className="pill">{selectedIds.length} kiválasztva</span>
             {/* <button className="btn ghost" type="button" onClick={clearSelection} disabled={!selectedIds.length}>
-              Kijeloles torlese
+              Kijelölés törlése
             </button> */}
             <button
               className="btn ghost danger"

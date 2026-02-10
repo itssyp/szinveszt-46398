@@ -4,6 +4,7 @@ import { addDoc, collection } from 'firebase/firestore'
 import ClientForm from '../components/ClientForm'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
 import { useClientsCache } from '../hooks/useClientsCache'
+import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { buildExistingIdSet } from '../features/clients/utils/clientDates'
 import { normalizeNumericId } from '../utils/id'
 import { db } from '../firebase'
@@ -12,6 +13,7 @@ function ClientCreatePage() {
   const navigate = useNavigate()
   const { fields, groups, emptyClientTemplate, loading: schemaLoading, error: schemaError } = useClientSchema()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
+  const { profiles } = useUserProfile()
   const [formData, setFormData] = useState({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -24,6 +26,22 @@ function ClientCreatePage() {
   }, [emptyClientTemplate])
 
   const existingIds = useMemo(() => buildExistingIdSet(clients), [clients])
+  const assigneeOptions = useMemo(() => {
+    const names = (profiles || [])
+      .map((p) => (p.username || p.email || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [profiles])
+  const fieldsWithAssignees = useMemo(
+    () =>
+      fields.map((field) => {
+        if (field.key !== 'hozzarendeltSzemely') return field
+        const baseOptions = Array.isArray(field.options) ? field.options : []
+        const mergedOptions = Array.from(new Set([...baseOptions, ...assigneeOptions]))
+        return { ...field, options: mergedOptions }
+      }),
+    [fields, assigneeOptions]
+  )
 
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
@@ -73,7 +91,7 @@ function ClientCreatePage() {
           </button>
         </div>
         <ClientForm
-          fields={fields}
+          fields={fieldsWithAssignees}
           groups={groups}
           formData={formData}
           onChange={handleChange}
