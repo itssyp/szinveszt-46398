@@ -13,6 +13,7 @@ import ClientsHeader from '../features/clients/components/ClientsHeader'
 import ClientsFilterBar from '../features/clients/components/ClientsFilterBar'
 import ClientListView from '../features/clients/components/ClientListView'
 import ClientSkeletons from '../features/clients/components/ClientSkeletons'
+import { t } from '../i18n'
 
 function ClientsPage({ currentUser, userProfiles = [] }) {
   const navigate = useNavigate()
@@ -22,6 +23,8 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketAssignee, setTicketAssignee] = useState(currentUser || '')
+  const [ticketPriority, setTicketPriority] = useState('medium')
+  const [ticketDueDate, setTicketDueDate] = useState('')
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
   const [selectedIds, setSelectedIds] = useState([])
@@ -125,11 +128,13 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     setTicketDescription('')
     setTicketError('')
     setTicketAssignee(currentUser || '')
+    setTicketPriority('medium')
+    setTicketDueDate('')
   }
 
   const handleCreateTicket = async () => {
     if (!ticketClient || !ticketDescription.trim() || !ticketAssignee) {
-      setTicketError('Add meg a leírást és a felelőst.')
+      setTicketError(t('tickets.create.requiredError'))
       return
     }
     try {
@@ -142,8 +147,12 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
         status: 'Nyitott',
         createdBy: currentUser || 'Ismeretlen',
         assignedTo: ticketAssignee,
+        priority: ticketPriority || 'medium',
+        dueDate: ticketDueDate || '',
         resolved: false,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser || 'Ismeretlen',
         comments: [],
       })
       await logClientActivity({
@@ -155,6 +164,8 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
       })
       setTicketClient(null)
       setTicketDescription('')
+      setTicketPriority('medium')
+      setTicketDueDate('')
       setStatus({ message: 'Ticket létrehozva.', ok: true })
     } catch (err) {
       setTicketError(err.message || 'Ticket létrehozása sikertelen')
@@ -289,6 +300,10 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
           onChangeDescription={setTicketDescription}
           assignedTo={ticketAssignee}
           onChangeAssignedTo={setTicketAssignee}
+          priority={ticketPriority}
+          onChangePriority={setTicketPriority}
+          dueDate={ticketDueDate}
+          onChangeDueDate={setTicketDueDate}
           currentUser={currentUser}
           assigneeOptions={assigneeOptions}
           saving={ticketSaving}

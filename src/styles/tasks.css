@@ -127,6 +127,78 @@
   gap: 12px;
 }
 
+.task-assignment-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.task-assignment-control {
+  min-width: 260px;
+}
+
+.task-catalog-launch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.task-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.task-catalog__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.task-catalog-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-catalog-card.is-added {
+  background: #f8fafc;
+}
+
+.task-catalog-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-catalog-card__head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.task-catalog-card p {
+  margin: 0;
+  color: #475569;
+}
+
+.task-catalog-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-pill-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .utalando-list {
   margin-top: 4px;
 }
@@ -139,6 +211,28 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.utalando-ticket-flag {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: #fdba74;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.utalando-ticket-flag svg {
+  width: 18px;
+  height: 18px;
+}
+
+.utalando-ticket-flag:hover {
+  border-color: #fb923c;
+  background: #ffedd5;
+  color: #9a3412;
 }
 
 .utalando-switch {
@@ -198,6 +292,10 @@
 
 @media (max-width: 560px) {
   .month-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-catalog__grid {
     grid-template-columns: 1fr;
   }
 }

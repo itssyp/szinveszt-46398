@@ -1,6 +1,7 @@
 import React from 'react'
 import { TbSend, TbX } from 'react-icons/tb'
 import Modal from './Modal'
+import { t } from '../i18n'
 
 function TicketCreateModal({
   client,
@@ -8,6 +9,10 @@ function TicketCreateModal({
   onChangeDescription,
   assignedTo,
   onChangeAssignedTo,
+  priority = 'medium',
+  onChangePriority,
+  dueDate = '',
+  onChangeDueDate,
   currentUser,
   assigneeOptions = [],
   saving,
@@ -16,47 +21,60 @@ function TicketCreateModal({
   onSubmit,
 }) {
   const options = Array.from(new Set([currentUser, ...assigneeOptions].filter(Boolean)))
+  const clientName = client?.nev || t('tickets.unknownClient')
 
   return (
-    <Modal title={`Új ticket - ${client?.nev || 'Ismeretlen ügyfél'}`} onClose={onCancel}>
+    <Modal title={t('tickets.create.title', { clientName })} onClose={onCancel}>
       <div className="details">
-        {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+        {error ? <div className="banner banner-error">{t('common.errorPrefix')} {error}</div> : null}
         <div className="details-section">
-          <h3>Ticket adatai</h3>
+          <h3>{t('tickets.create.details')}</h3>
           <div className="ticket-form">
             <div className="form-field">
-              <span>Ügyfél</span>
-              <input type="text" value={client?.nev || 'Ismeretlen ügyfél'} disabled />
+              <span>{t('tickets.create.client')}</span>
+              <input type="text" value={clientName} disabled />
             </div>
             <div className="form-field">
-              <span>Felelős</span>
-              <select value={assignedTo} onChange={(e) => onChangeAssignedTo(e.target.value)}>
-                <option value="">Válassz...</option>
-                {options.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
+              <span>{t('tickets.create.assignee')}</span>
+              <select value={assignedTo} onChange={(event) => onChangeAssignedTo(event.target.value)}>
+                <option value="">{t('tickets.create.assigneeSelect')}</option>
+                {options.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
                   </option>
                 ))}
               </select>
             </div>
             <div className="form-field">
-              <span>Leírás</span>
+              <span>{t('tickets.priority')}</span>
+              <select value={priority} onChange={(event) => onChangePriority(event.target.value)}>
+                <option value="low">{t('tickets.priorityLow')}</option>
+                <option value="medium">{t('tickets.priorityMedium')}</option>
+                <option value="high">{t('tickets.priorityHigh')}</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <span>{t('tickets.dueDate')}</span>
+              <input type="date" value={dueDate} onChange={(event) => onChangeDueDate(event.target.value)} />
+            </div>
+            <div className="form-field">
+              <span>{t('tickets.create.description')}</span>
               <textarea
                 rows={5}
-                placeholder="Írd le a problémát vagy kérést..."
+                placeholder={t('tickets.create.descriptionPlaceholder')}
                 value={description}
-                onChange={(e) => onChangeDescription(e.target.value)}
+                onChange={(event) => onChangeDescription(event.target.value)}
               />
             </div>
           </div>
           <div className="form-actions">
             <button className="btn" type="button" disabled={saving} onClick={onSubmit}>
               <TbSend />
-              {saving ? 'Mentés...' : 'Ticket létrehozása'}
+              {saving ? t('tasks.detail.saving') : t('tickets.create.createButton')}
             </button>
             <button className="btn ghost" type="button" onClick={onCancel} disabled={saving}>
               <TbX />
-              Mégse
+              {t('tickets.create.cancel')}
             </button>
           </div>
         </div>

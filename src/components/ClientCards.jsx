@@ -1,4 +1,5 @@
-﻿import React from 'react'
+import React from 'react'
+import { t } from '../i18n'
 
 export const statusClass = (status) => {
   const value = (status || '').toString().toLowerCase()
@@ -15,8 +16,8 @@ function ClientCards({ clients, onSelect, selectedIds = [], onToggleSelect, onLo
     <div className="panel cards-panel">
       <div className="panel-head">
         <div>
-          <p className="eyebrow">Lista</p>
-          <h2>Ügyfelek</h2>
+          <p className="eyebrow">{t('clients.list')}</p>
+          <h2>{t('clients.title')}</h2>
         </div>
         <span className="pill">{clients.length}</span>
       </div>
@@ -60,9 +61,9 @@ function ClientCards({ clients, onSelect, selectedIds = [], onToggleSelect, onLo
               onMouseLeave={endPress}
               onTouchStart={startPress}
               onTouchEnd={endPress}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
                   onSelect(client)
                 }
               }}
@@ -70,28 +71,26 @@ function ClientCards({ clients, onSelect, selectedIds = [], onToggleSelect, onLo
               {selectionMode && onToggleSelect ? (
                 <label
                   className="client-card__checkbox"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
                 >
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggleSelect(client.id)}
-                    aria-label="Kijelölés"
+                    aria-label={t('clients.select')}
                   />
                 </label>
               ) : null}
               <div className="client-header">
                 <span className={statusClass(client.statusz)} aria-hidden="true" />
-                <div className="client-primary">{client.nev || 'Nincs név'}</div>
+                <div className="client-primary">{client.nev || t('clients.noName')}</div>
               </div>
-              <div className="client-secondary">{client.adoszam || 'Adószám nincs megadva'}</div>
+              <div className="client-secondary">{client.adoszam || t('clients.noTax')}</div>
             </div>
           )
         })}
-        {!clients.length ? (
-          <div className="empty-grid">Nincs még adat. Adj hozzá egy ügyfelet.</div>
-        ) : null}
+        {!clients.length ? <div className="empty-grid">{t('clients.noData')}</div> : null}
       </div>
     </div>
   )

@@ -1,0 +1,126 @@
+.calendar-panel,
+.calendar-due-panel {
+  margin-top: 12px;
+}
+
+.calendar-panel .panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.calendar-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.calendar-month-title {
+  margin: 0;
+  text-align: center;
+  min-width: 220px;
+}
+
+.calendar-month-arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid #dbe1ea;
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.08s ease;
+}
+
+.calendar-month-arrow:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+.calendar-today-btn {
+  align-self: center;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-day {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 12px;
+  min-height: 88px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+}
+
+.calendar-day.empty {
+  background: transparent;
+  border-style: dashed;
+  border-color: #e5e7eb;
+  cursor: default;
+}
+
+.calendar-day.is-today {
+  border-color: #93c5fd;
+}
+
+.calendar-day.is-selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12) inset;
+}
+
+.calendar-day__num {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.calendar-day__due {
+  align-self: flex-end;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .calendar-grid,
+  .calendar-weekdays {
+    gap: 6px;
+  }
+
+  .calendar-day {
+    min-height: 74px;
+    padding: 6px;
+  }
+}

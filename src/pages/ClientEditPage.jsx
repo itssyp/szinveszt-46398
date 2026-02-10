@@ -140,7 +140,7 @@ function ClientEditPage() {
       await logClientActivity({
         clientId,
         type: 'client_updated',
-        message: 'Ugyfel adat frissitve',
+        message: 'Ügyfél adat frissítve',
         meta: {},
         actor: actorName,
       })
@@ -153,7 +153,7 @@ function ClientEditPage() {
         navigate(detailPath)
       }
     } catch (err) {
-      setError(err.message || 'Mentesi hiba')
+      setError(err.message || 'Mentési hiba')
     } finally {
       setSaving(false)
       setShowConfirmLeave(false)
@@ -173,18 +173,18 @@ function ClientEditPage() {
             <TbArrowLeft />
           </button>
           <div className="section-header__intro">
-            <p className="eyebrow">Ugyfel</p>
-            <h1 className="section-title">{client?.nev || 'Ugyfel szerkesztese'}</h1>
-            <p className="section-subtitle">Adatok szerkesztese</p>
+            <p className="eyebrow">Ügyfél</p>
+            <h1 className="section-title">{client?.nev || 'Ügyfél szerkesztése'}</h1>
+            <p className="section-subtitle">Adatok szerkesztése</p>
           </div>
         </div>
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
-      {schemaLoading && !formInitialized ? <div className="banner">Sema betoltese...</div> : null}
+      {schemaLoading && !formInitialized ? <div className="banner">Séma betöltése...</div> : null}
 
       <section className="panel">
-        {clientsLoading && !formInitialized ? <div className="banner">Betoltes...</div> : null}
+        {clientsLoading && !formInitialized ? <div className="banner">Betöltés...</div> : null}
 
         {client ? (
           <ClientForm
@@ -204,13 +204,13 @@ function ClientEditPage() {
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
             <header className="modal-header">
-              <h2>Valtozasok mentese?</h2>
+              <h2>Változások mentése?</h2>
             </header>
             <div className="modal-body">
-              <p>Nem mentett modositasaid vannak. Mit szeretnel tenni?</p>
+              <p>Nem mentett módosításaid vannak. Mit szeretnél tenni?</p>
               <div className="form-actions">
                 <button className="btn" type="button" onClick={handleSubmit} disabled={saving}>
-                  Mentes
+                  Mentés
                 </button>
                 <button
                   className="btn ghost"
@@ -221,7 +221,7 @@ function ClientEditPage() {
                   }}
                   disabled={saving}
                 >
-                  Megse
+                  Mégse
                 </button>
                 <button
                   className="btn ghost"
@@ -232,7 +232,7 @@ function ClientEditPage() {
                   }}
                   disabled={saving}
                 >
-                  Elvetes
+                  Elvetés
                 </button>
               </div>
             </div>

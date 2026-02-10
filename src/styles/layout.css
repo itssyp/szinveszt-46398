@@ -120,6 +120,144 @@
   gap: 10px;
 }
 
+.nav-notifications {
+  position: relative;
+}
+
+.nav-bell {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.nav-bell:hover,
+.nav-bell.is-open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.nav-bell__count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border: 2px solid var(--surface);
+}
+
+.nav-notifications__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(360px, 88vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 34px rgba(15, 23, 42, 0.16);
+  display: none;
+  z-index: 30;
+}
+
+.nav-notifications__menu.is-open {
+  display: block;
+}
+
+.nav-notifications__head {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nav-notifications__head .btn {
+  padding: 6px 8px;
+  font-size: 0.85rem;
+}
+
+.nav-notifications__list {
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-notification-item {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+}
+
+.nav-notification-item:hover {
+  background: #f8fafc;
+}
+
+.nav-notification-item.is-seen {
+  opacity: 0.72;
+}
+
+.nav-notification-item__link {
+  padding: 10px 12px;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nav-notification-item__link:hover {
+  background: #f8fafc;
+}
+
+.nav-notification-item strong {
+  font-size: 0.9rem;
+}
+
+.nav-notification-item span {
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.nav-notification-item__delete {
+  width: 34px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.nav-notification-item__delete:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.nav-notifications__empty {
+  margin: 0;
+  padding: 14px 12px;
+}
+
 .user-select {
   display: inline-flex;
   align-items: center;

@@ -21,7 +21,7 @@ export function exportClientsToExcel(clients) {
   const rows = clients.map((client) => keys.map((key) => formatExportValue(client[key])))
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
   const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Ugyfelek')
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Ügyfelek')
 
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   XLSX.writeFile(workbook, `ugyfelek-export-${stamp}.xlsx`)

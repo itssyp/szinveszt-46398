@@ -13,6 +13,7 @@ import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { normalizeTaxId } from '../utils/id'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
 import { useEvStatusSegments, useEvActivityPeriods } from '../hooks/useEvData'
+import { t } from '../i18n'
 
 const NAV_KEYS = [
   'navOnlineActive',
@@ -35,6 +36,8 @@ function ClientDetailsPage() {
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketAssignee, setTicketAssignee] = useState('')
+  const [ticketPriority, setTicketPriority] = useState('medium')
+  const [ticketDueDate, setTicketDueDate] = useState('')
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
   const [ticketCount, setTicketCount] = useState(0)
@@ -127,6 +130,8 @@ function ClientDetailsPage() {
     if (!client) return
     setTicketClient(client)
     setTicketAssignee(actorName || '')
+    setTicketPriority('medium')
+    setTicketDueDate('')
     setTicketDescription('')
     setTicketError('')
   }
@@ -134,7 +139,7 @@ function ClientDetailsPage() {
   const handleCreateTicket = async () => {
     if (!docId || !ticketClient) return
     if (!ticketDescription.trim() || !ticketAssignee) {
-      setTicketError('Add meg a leirast es a felelost.')
+      setTicketError(t('tickets.create.requiredError'))
       return
     }
     try {
@@ -142,13 +147,17 @@ function ClientDetailsPage() {
       setTicketError('')
       const ref = await addDoc(collection(db, 'tickets'), {
         clientId: docId,
-        clientName: ticketClient.nev || 'Ismeretlen ugyfel',
+        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
         description: ticketDescription.trim(),
         status: 'Nyitott',
         createdBy: actorName || 'Ismeretlen',
         assignedTo: ticketAssignee,
+        priority: ticketPriority || 'medium',
+        dueDate: ticketDueDate || '',
         resolved: false,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedBy: actorName || 'Ismeretlen',
         comments: [],
       })
       await logClientActivity({
@@ -161,8 +170,10 @@ function ClientDetailsPage() {
       setTicketClient(null)
       setTicketDescription('')
       setTicketAssignee(actorName || '')
+      setTicketPriority('medium')
+      setTicketDueDate('')
     } catch (err) {
-      setTicketError(err.message || 'Ticket letrehozasa sikertelen')
+      setTicketError(err.message || 'Ticket létrehozása sikertelen')
     } finally {
       setTicketSaving(false)
     }
@@ -188,7 +199,7 @@ function ClientDetailsPage() {
           <div className="section-header__intro">
             <p className="eyebrow">Ügyfél</p>
             <h1 className="section-title">{title}</h1>
-            {taxNumber ? <p className="section-subtitle">Adoszam: {taxNumber}</p> : null}
+            {taxNumber ? <p className="section-subtitle">Adószám: {taxNumber}</p> : null}
             {clientId && !taxNumber ? <p className="section-subtitle">ID: {clientId}</p> : null}
           </div>
         </div>
@@ -239,6 +250,10 @@ function ClientDetailsPage() {
           onChangeDescription={setTicketDescription}
           assignedTo={ticketAssignee}
           onChangeAssignedTo={setTicketAssignee}
+          priority={ticketPriority}
+          onChangePriority={setTicketPriority}
+          dueDate={ticketDueDate}
+          onChangeDueDate={setTicketDueDate}
           currentUser={actorName}
           assigneeOptions={assigneeOptions}
           saving={ticketSaving}

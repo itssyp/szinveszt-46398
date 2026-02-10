@@ -1,6 +1,7 @@
-﻿import React from 'react'
+import React from 'react'
 import { TbLayoutGrid, TbList } from 'react-icons/tb'
 import { defaultViewMode } from '../hooks/useClientFilters'
+import { t } from '../../../i18n'
 
 const monthOptions = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 
@@ -28,16 +29,16 @@ function ClientsFilterBar({
         <div className="input-shell search-field wide-search">
           <input
             type="search"
-            placeholder="Keresés név vagy adószám alapján..."
+            placeholder={t('clients.filters.searchPlaceholder')}
             value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(event) => onSearchChange(event.target.value)}
           />
         </div>
         <div className="filter-bar">
           <label className="filter-control">
-            <span>Státusz</span>
-            <select value={statusFilter} onChange={(e) => onStatusChange(e.target.value)}>
-              <option value="">Mind</option>
+            <span>{t('clients.filters.status')}</span>
+            <select value={statusFilter} onChange={(event) => onStatusChange(event.target.value)}>
+              <option value="">{t('common.all')}</option>
               {availableStatuses.map((status) => (
                 <option key={status} value={status}>
                   {status}
@@ -46,17 +47,17 @@ function ClientsFilterBar({
             </select>
           </label>
           <label className="filter-control">
-            <span>Billingo tartozás</span>
-            <select value={debtFilter} onChange={(e) => onDebtChange(e.target.value)}>
-              <option value="">Mind</option>
-              <option value="has">Van</option>
-              <option value="none">Nincs</option>
+            <span>{t('clients.filters.debt')}</span>
+            <select value={debtFilter} onChange={(event) => onDebtChange(event.target.value)}>
+              <option value="">{t('common.all')}</option>
+              <option value="has">{t('clients.filters.debtHas')}</option>
+              <option value="none">{t('clients.filters.debtNone')}</option>
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdés éve</span>
-            <select value={startYear} onChange={(e) => onYearChange(e.target.value)}>
-              <option value="">Mind</option>
+            <span>{t('clients.filters.startYear')}</span>
+            <select value={startYear} onChange={(event) => onYearChange(event.target.value)}>
+              <option value="">{t('common.all')}</option>
               {availableYears.map((year) => (
                 <option key={year} value={year}>
                   {year}
@@ -65,29 +66,29 @@ function ClientsFilterBar({
             </select>
           </label>
           <label className="filter-control">
-            <span>Kezdés hónapja</span>
-            <select value={startMonth} onChange={(e) => onMonthChange(e.target.value)}>
-              <option value="">Mind</option>
-              {monthOptions.map((m) => (
-                <option key={m} value={m}>
-                  {m}
+            <span>{t('clients.filters.startMonth')}</span>
+            <select value={startMonth} onChange={(event) => onMonthChange(event.target.value)}>
+              <option value="">{t('common.all')}</option>
+              {monthOptions.map((monthOption) => (
+                <option key={monthOption} value={monthOption}>
+                  {monthOption}
                 </option>
               ))}
             </select>
           </label>
           <label className="filter-control">
-            <span>Rendezés</span>
-            <select value={sortBy} onChange={(e) => onSortChange(e.target.value)}>
-              <option value="name">Név (A-Z)</option>
-              <option value="start-desc">Kezdés dátuma (legújabb)</option>
-              <option value="start-asc">Kezdés dátuma (legrégebbi)</option>
+            <span>{t('clients.filters.sort')}</span>
+            <select value={sortBy} onChange={(event) => onSortChange(event.target.value)}>
+              <option value="name">{t('clients.filters.sortName')}</option>
+              <option value="start-desc">{t('clients.filters.sortStartDesc')}</option>
+              <option value="start-asc">{t('clients.filters.sortStartAsc')}</option>
             </select>
           </label>
           <button
             type="button"
             className="view-toggle-btn"
             onClick={onToggleView}
-            title={viewMode === 'cards' ? 'Váltás listára' : 'Váltás kártyákra'}
+            title={viewMode === 'cards' ? t('clients.filters.switchToList') : t('clients.filters.switchToCards')}
           >
             <span className="view-toggle-icon" aria-hidden="true">
               {viewMode === 'cards' ? <TbList /> : <TbLayoutGrid />}

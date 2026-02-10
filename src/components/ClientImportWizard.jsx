@@ -171,7 +171,7 @@ function ClientImportWizard({ onClose, clients = [], onComplete, variant = 'moda
         activityBatch.set(actRef, {
           clientId: clientIdForActivity,
           type: 'import',
-          message: row.action === 'update' ? 'Import: frissites' : 'Import: letrehozas',
+          message: row.action === 'update' ? 'Import: frissítés' : 'Import: létrehozás',
           meta: { action: row.action },
           actor: 'Import',
           createdAt: serverTimestamp(),

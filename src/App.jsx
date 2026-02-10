@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { orderBy, query } from 'firebase/firestore'
+import { TbBell, TbBellRinging, TbChecks, TbTrash } from 'react-icons/tb'
 import './style.css'
 import ClientsPage from './pages/ClientsPage'
 import TicketsPage from './pages/TicketsPage'
@@ -15,10 +17,38 @@ import ClientExportPage from './pages/ClientExportPage.jsx'
 import Bevallas58Page from './pages/Bevallas58Page.jsx'
 import MonthlyTasksPage from './pages/MonthlyTasksPage.jsx'
 import MonthlyTaskDetailPage from './pages/MonthlyTaskDetailPage.jsx'
+import CalendarPage from './pages/CalendarPage.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
 import { ClientSchemaProvider } from './hooks/useClientSchema.jsx'
+import useCollectionSubscription from './hooks/useCollectionSubscription'
+import { t } from './i18n'
 import Login from './components/Login'
+
+function getTimestampMs(value) {
+  if (!value) return 0
+  if (typeof value.toMillis === 'function') return value.toMillis()
+  const parsed = Date.parse(String(value))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getTodayIso() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseStoredMap(value) {
+  try {
+    const parsed = JSON.parse(value || '{}')
+    if (parsed && typeof parsed === 'object') return parsed
+  } catch {
+    return {}
+  }
+  return {}
+}
 
 function AppShell() {
   const { user, authReady, authError, signIn, signingIn } = useAuth()
@@ -32,31 +62,178 @@ function AppShell() {
   } = useUserProfile()
   const location = useLocation()
   const [clientMenuOpen, setClientMenuOpen] = useState(false)
-  const [bevallasMenuOpen, setBevallasMenuOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [seenNotificationKeys, setSeenNotificationKeys] = useState({})
+  const [deletedNotificationKeys, setDeletedNotificationKeys] = useState({})
+  const notificationsRef = useRef(null)
+  const { data: tickets } = useCollectionSubscription('tickets', (coll) =>
+    query(coll, orderBy('createdAt', 'desc'))
+  )
   const clientsSectionActive =
     location.pathname.startsWith('/clients') || location.pathname.startsWith('/client-schema')
-  const bevallasSectionActive = location.pathname.startsWith('/bevallas')
 
   const displayName = useMemo(() => {
     if (profile?.username) return profile.username
     if (user?.displayName) return user.displayName
     if (user?.email) return user.email.split('@')[0]
-    return 'Felhasználó'
+    return t('app.fallbackUser')
   }, [user, profile])
 
   const waitingForProfile = Boolean(user) && profileLoading
+  const userIdentitySet = useMemo(() => {
+    const identities = new Set()
+    const add = (value) => {
+      const normalized = String(value || '').trim().toLowerCase()
+      if (normalized) identities.add(normalized)
+    }
+    add(profile?.username)
+    add(profile?.email)
+    add(user?.displayName)
+    add(user?.email)
+    if (user?.email) add(user.email.split('@')[0])
+    add(displayName)
+    return identities
+  }, [displayName, profile, user])
+
+  const allNotifications = useMemo(() => {
+    const todayIso = getTodayIso()
+    const items = []
+
+    tickets.forEach((ticket) => {
+      const assignedTo = String(ticket.assignedTo || '').trim().toLowerCase()
+      if (!assignedTo || !userIdentitySet.has(assignedTo)) return
+
+      const titleClient = ticket.clientName || t('tickets.unknownClient')
+      const createdMs = getTimestampMs(ticket.createdAt)
+      const updatedMs = getTimestampMs(ticket.updatedAt)
+      const resolved = Boolean(ticket.resolved)
+
+      if (!resolved && String(ticket.dueDate || '') === todayIso) {
+        items.push({
+          key: `due-${ticket.id}-${todayIso}`,
+          createdMs: updatedMs || createdMs,
+          type: 'due_today',
+          title: t('notifications.dueTodayTitle'),
+          text: t('notifications.dueTodayText', { client: titleClient }),
+        })
+      }
+
+      if (createdMs > 0) {
+        items.push({
+          key: `new-${ticket.id}-${createdMs}`,
+          createdMs,
+          type: 'new_assigned',
+          title: t('notifications.newAssignedTitle'),
+          text: t('notifications.newAssignedText', { client: titleClient }),
+        })
+      }
+
+      if (updatedMs > createdMs) {
+        items.push({
+          key: `upd-${ticket.id}-${updatedMs}`,
+          createdMs: updatedMs,
+          type: 'updated_assigned',
+          title: t('notifications.updatedTitle'),
+          text: t('notifications.updatedText', { client: titleClient }),
+        })
+      }
+    })
+
+    items.sort((a, b) => b.createdMs - a.createdMs)
+    return items
+  }, [tickets, userIdentitySet])
+
+  const notifications = useMemo(
+    () =>
+      allNotifications
+        .filter((item) => !deletedNotificationKeys[item.key])
+        .map((item) => ({
+          ...item,
+          seen: Boolean(seenNotificationKeys[item.key]),
+        })),
+    [allNotifications, deletedNotificationKeys, seenNotificationKeys]
+  )
 
   useEffect(() => {
     setClientMenuOpen(false)
-    setBevallasMenuOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    const seenStored = window.localStorage.getItem(`notifications.seen.${user.uid}`)
+    const deletedStored = window.localStorage.getItem(`notifications.deleted.${user.uid}`)
+    setSeenNotificationKeys(parseStoredMap(seenStored))
+    setDeletedNotificationKeys(parseStoredMap(deletedStored))
+  }, [user?.uid])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    window.localStorage.setItem(
+      `notifications.seen.${user.uid}`,
+      JSON.stringify(seenNotificationKeys)
+    )
+  }, [seenNotificationKeys, user?.uid])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    window.localStorage.setItem(
+      `notifications.deleted.${user.uid}`,
+      JSON.stringify(deletedNotificationKeys)
+    )
+  }, [deletedNotificationKeys, user?.uid])
+
+  useEffect(() => {
+    if (!allNotifications.length) return
+    const validKeys = new Set(allNotifications.map((item) => item.key))
+    setSeenNotificationKeys((prev) => {
+      const next = {}
+      Object.keys(prev).forEach((key) => {
+        if (validKeys.has(key) && prev[key]) next[key] = true
+      })
+      return next
+    })
+    setDeletedNotificationKeys((prev) => {
+      const next = {}
+      Object.keys(prev).forEach((key) => {
+        if (validKeys.has(key) && prev[key]) next[key] = true
+      })
+      return next
+    })
+  }, [allNotifications])
+
+  useEffect(() => {
+    const onClickOutside = (event) => {
+      if (!notificationsRef.current?.contains(event.target)) {
+        setNotificationsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  const markNotificationsSeen = (keys = notifications.map((item) => item.key)) => {
+    if (!keys.length) return
+    setSeenNotificationKeys((prev) => {
+      const next = { ...prev }
+      keys.forEach((key) => {
+        next[key] = true
+      })
+      return next
+    })
+  }
+
+  const dismissNotification = (key) => {
+    setDeletedNotificationKeys((prev) => ({ ...prev, [key]: true }))
+  }
+
+  const unreadCount = notifications.filter((item) => !item.seen).length
 
   if (!authReady || waitingForProfile) {
     return (
       <div className="page-container">
         <div className="panel">
-          <p className="eyebrow">Bejelentkezés</p>
-          <h2>Kapcsolódás...</h2>
+          <p className="eyebrow">{t('app.auth.eyebrow')}</p>
+          <h2>{t('app.auth.connecting')}</h2>
         </div>
       </div>
     )
@@ -83,7 +260,7 @@ function AppShell() {
               type="button"
               onClick={() => setClientMenuOpen((v) => !v)}
             >
-              Ügyfelek
+              {t('app.nav.clients')}
             </button>
             <div className={`nav-dropdown__menu${clientMenuOpen ? ' is-open' : ''}`}>
               <NavLink
@@ -91,86 +268,129 @@ function AppShell() {
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
               >
-                Ügyfelek lista
+                {t('app.nav.clientsList')}
               </NavLink>
               <NavLink
                 to="/clients/new"
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
               >
-                Új ügyfél
+                {t('app.nav.newClient')}
               </NavLink>
               <NavLink
                 to="/clients/import"
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
               >
-                Excel import
+                {t('app.nav.excelImport')}
               </NavLink>
               <NavLink
                 to="/clients/income-import"
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
               >
-                Bevételek import
+                {t('app.nav.incomesImport')}
               </NavLink>
               <NavLink
                 to="/client-schema"
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
               >
-                Séma szerkesztő
+                {t('app.nav.schemaEditor')}
               </NavLink>
               <NavLink
                 to="/clients/export"
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 onClick={() => setClientMenuOpen(false)}
               >
-                Excel export
+                {t('app.nav.excelExport')}
               </NavLink>
             </div>
           </div>
-          <div
-            className={`nav-dropdown${bevallasSectionActive ? ' active' : ''}`}
-            onMouseLeave={() => setBevallasMenuOpen(false)}
-          >
-            <button
-              className={`nav-link nav-dropdown__toggle${bevallasSectionActive ? ' active' : ''}`}
-              type="button"
-              onClick={() => setBevallasMenuOpen((v) => !v)}
-            >
-              Bevallások
-            </button>
-            <div className={`nav-dropdown__menu${bevallasMenuOpen ? ' is-open' : ''}`}>
-              <NavLink
-                to="/bevallas/58"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setBevallasMenuOpen(false)}
-              >
-                58
-              </NavLink>
-            </div>
-          </div>
+          {/* Bevallások tab temporarily hidden */}
           <NavLink
             to="/tickets"
             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
           >
-            Ticketek
+            {t('app.nav.tickets')}
           </NavLink>
           <NavLink
             to="/tasks"
             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
           >
-            Feladatok
+            {t('app.nav.tasks')}
+          </NavLink>
+          <NavLink
+            to="/calendar"
+            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+          >
+            {t('app.nav.calendar')}
           </NavLink>
           <NavLink
             to="/debts"
             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
           >
-            Kintlévőségek
+            {t('app.nav.debts')}
           </NavLink>
         </div>
         <div className="nav-controls">
+          <div className="nav-notifications" ref={notificationsRef}>
+            <button
+              type="button"
+              className={`nav-bell${notificationsOpen ? ' is-open' : ''}`}
+              onClick={() => {
+                const next = !notificationsOpen
+                setNotificationsOpen(next)
+                if (next) markNotificationsSeen()
+              }}
+              aria-label={t('notifications.title')}
+            >
+              {unreadCount > 0 ? <TbBellRinging /> : <TbBell />}
+              {unreadCount > 0 ? <span className="nav-bell__count">{unreadCount}</span> : null}
+            </button>
+            <div className={`nav-notifications__menu${notificationsOpen ? ' is-open' : ''}`}>
+              <div className="nav-notifications__head">
+                <strong>{t('notifications.title')}</strong>
+                <button type="button" className="btn ghost" onClick={markNotificationsSeen}>
+                  <TbChecks />
+                  {t('notifications.markAllRead')}
+                </button>
+              </div>
+              {notifications.length ? (
+                <div className="nav-notifications__list">
+                  {notifications.slice(0, 12).map((item) => (
+                    <div
+                      key={item.key}
+                      className={`nav-notification-item${item.seen ? ' is-seen' : ''}`}
+                    >
+                      <NavLink
+                        to="/tickets"
+                        className="nav-notification-item__link"
+                        onClick={() => {
+                          markNotificationsSeen([item.key])
+                          setNotificationsOpen(false)
+                        }}
+                      >
+                        <strong>{item.title}</strong>
+                        <span>{item.text}</span>
+                      </NavLink>
+                      <button
+                        type="button"
+                        className="nav-notification-item__delete"
+                        title={t('notifications.delete')}
+                        aria-label={t('notifications.delete')}
+                        onClick={() => dismissNotification(item.key)}
+                      >
+                        <TbTrash />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted nav-notifications__empty">{t('notifications.empty')}</p>
+              )}
+            </div>
+          </div>
           <NavLink
             to="/profile"
             className={({ isActive }) => `user-select nav-user-link${isActive ? ' active' : ''}`}
@@ -179,7 +399,7 @@ function AppShell() {
               {avatarLetter}
             </div>
             <div className="user-labels">
-              <span>Belépve:</span>
+              <span>{t('app.nav.loggedIn')}</span>
               <strong>{displayName}</strong>
             </div>
           </NavLink>
@@ -201,6 +421,7 @@ function AppShell() {
         <Route path="/bevallas/58" element={<Bevallas58Page />} />
         <Route path="/tasks" element={<MonthlyTasksPage />} />
         <Route path="/tasks/:year/:month" element={<MonthlyTaskDetailPage />} />
+        <Route path="/calendar" element={<CalendarPage currentUser={displayName} userProfiles={profiles || []} />} />
         <Route
           path="/tickets"
           element={<TicketsPage currentUser={displayName} userProfiles={profiles || []} />}

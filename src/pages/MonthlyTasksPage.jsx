@@ -2,21 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
+import { i18n, t } from '../i18n'
 
-const MONTHS = [
-  { id: 1, label: 'Január', short: 'Jan' },
-  { id: 2, label: 'Február', short: 'Feb' },
-  { id: 3, label: 'Március', short: 'Már' },
-  { id: 4, label: 'Április', short: 'Ápr' },
-  { id: 5, label: 'Május', short: 'Máj' },
-  { id: 6, label: 'Június', short: 'Jún' },
-  { id: 7, label: 'Július', short: 'Júl' },
-  { id: 8, label: 'Augusztus', short: 'Aug' },
-  { id: 9, label: 'Szeptember', short: 'Sze' },
-  { id: 10, label: 'Október', short: 'Okt' },
-  { id: 11, label: 'November', short: 'Nov' },
-  { id: 12, label: 'December', short: 'Dec' },
-]
+const MONTHS = i18n.tasks.months.full.map((label, index) => ({
+  id: index + 1,
+  label,
+  short: i18n.tasks.months.short[index],
+}))
 
 function MonthlyTasksPage() {
   const navigate = useNavigate()
@@ -50,18 +42,16 @@ function MonthlyTasksPage() {
       <header className="section-header tasks-hero">
         <div className="section-header__top">
           <div>
-            <p className="eyebrow">Feladatok</p>
-            <h1 className="section-title">Havi feladatok</h1>
-            <p className="section-subtitle">
-              Válassz hónapot a feladatok áttekintéséhez és követéséhez.
-            </p>
+            <p className="eyebrow">{t('tasks.list.eyebrow')}</p>
+            <h1 className="section-title">{t('tasks.list.title')}</h1>
+            <p className="section-subtitle">{t('tasks.list.subtitle')}</p>
           </div>
           <div className="year-switcher">
             <button
               type="button"
               className="year-control"
               onClick={() => setYear((prev) => prev - 1)}
-              aria-label="Előző év"
+              aria-label={t('tasks.list.prevYear')}
             >
               {'<'}
             </button>
@@ -70,7 +60,7 @@ function MonthlyTasksPage() {
               type="button"
               className="year-control"
               onClick={() => setYear((prev) => prev + 1)}
-              aria-label="Következő év"
+              aria-label={t('tasks.list.nextYear')}
             >
               {'>'}
             </button>
@@ -93,7 +83,7 @@ function MonthlyTasksPage() {
               </div>
               <span className="month-card__index">{String(month.id).padStart(2, '0')}</span>
             </div>
-            {closedMonths[month.id] ? <span className="month-card__status">Lezárva</span> : null}
+            {closedMonths[month.id] ? <span className="month-card__status">{t('common.closed')}</span> : null}
           </button>
         ))}
       </section>

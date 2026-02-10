@@ -5,6 +5,41 @@ import useCollectionSubscription from '../hooks/useCollectionSubscription'
 import Modal from '../components/Modal'
 import TicketModal from '../components/TicketModal'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
+import { t } from '../i18n'
+
+const getPriorityLabel = (priority) => {
+  if (priority === 'high') return t('tickets.priorityHigh')
+  if (priority === 'low') return t('tickets.priorityLow')
+  return t('tickets.priorityMedium')
+}
+
+const getDueMeta = (dueDate) => {
+  if (!dueDate) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(`${dueDate}T00:00:00`)
+  if (Number.isNaN(due.getTime())) return null
+
+  const diffDays = Math.round((due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+  if (diffDays < 0) return { label: t('tickets.overdue'), className: 'ticket-due overdue' }
+  if (diffDays === 0) return { label: t('tickets.dueToday'), className: 'ticket-due today' }
+  if (diffDays === 1) return { label: t('tickets.dueTomorrow'), className: 'ticket-due' }
+  return { label: due.toLocaleDateString(), className: 'ticket-due' }
+}
+
+const getTaskLinkMeta = (taskContext) => {
+  if (!taskContext || taskContext.type !== 'utalando') return null
+  const monthKey = taskContext.monthKey || ''
+  return {
+    label: t('tickets.taskUtalandoForMonth', { monthKey }),
+    className: 'ticket-task-link',
+  }
+}
+
+const getTaskFilterValue = (taskContext) => {
+  if (!taskContext || !taskContext.type) return ''
+  return `${taskContext.type}:${taskContext.monthKey || ''}`
+}
 
 function TicketsPage({ currentUser }) {
   const { data: tickets, error, loading } = useCollectionSubscription('tickets', (coll) =>
@@ -15,15 +50,17 @@ function TicketsPage({ currentUser }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('')
+  const [taskFilter, setTaskFilter] = useState('')
   const [clientFilter, setClientFilter] = useState({ id: '', name: '' })
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
     if (selectedTicket) {
-      const updated = tickets.find((t) => t.id === selectedTicket.id)
+      const updated = tickets.find((ticket) => ticket.id === selectedTicket.id)
       if (updated) setSelectedTicket(updated)
     }
-  }, [tickets])
+  }, [tickets, selectedTicket])
 
   useEffect(() => {
     const clientId = searchParams.get('clientId') || ''
@@ -37,68 +74,81 @@ function TicketsPage({ currentUser }) {
 
   const assigneeColors = useMemo(() => {
     const map = {}
-    profiles.forEach((p) => {
-      const key = (p.username || p.email || '').trim().toLowerCase()
-      if (key) map[key] = p.themeColor || map[key]
+    profiles.forEach((profile) => {
+      const key = (profile.username || profile.email || '').trim().toLowerCase()
+      if (key) map[key] = profile.themeColor || map[key]
     })
     return map
   }, [profiles])
 
   const assigneeOptions = useMemo(() => {
     const names = profiles
-      .map((p) => (p.username || p.email || '').trim())
+      .map((profile) => (profile.username || profile.email || '').trim())
       .filter(Boolean)
     return Array.from(new Set(names))
   }, [profiles])
 
+  const taskOptions = useMemo(() => {
+    const map = new Map()
+    tickets.forEach((ticket) => {
+      const value = getTaskFilterValue(ticket.taskContext)
+      if (!value) return
+      const meta = getTaskLinkMeta(ticket.taskContext)
+      if (!meta) return
+      map.set(value, meta.label)
+    })
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }))
+  }, [tickets])
+
   const filteredTickets = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    return tickets.filter((t) => {
-      const name = (t.clientName || '').toLowerCase()
-      const desc = (t.description || '').toLowerCase()
-      const statusText = t.resolved ? 'megoldva' : 'nyitott'
-      const assignee = (t.assignedTo || '').toLowerCase()
+    return tickets.filter((ticket) => {
+      const name = (ticket.clientName || '').toLowerCase()
+      const desc = (ticket.description || '').toLowerCase()
+      const statusText = ticket.resolved ? 'megoldva' : 'nyitott'
+      const assignee = (ticket.assignedTo || '').toLowerCase()
+      const priority = String(ticket.priority || 'medium').toLowerCase()
 
-      const matchesSearch =
-        !term || name.includes(term) || desc.includes(term) || statusText.includes(term)
-      const matchesAssignee = assigneeFilter
-        ? assignee === assigneeFilter.toLowerCase()
-        : true
-      const matchesStatus =
-        statusFilter === ''
-          ? true
-          : statusFilter === 'open'
-            ? !t.resolved
-            : t.resolved
-      const matchesClient = clientFilter.id
-        ? String(t.clientId || '') === String(clientFilter.id)
-        : true
+      const matchesSearch = !term || name.includes(term) || desc.includes(term) || statusText.includes(term)
+      const matchesAssignee = assigneeFilter ? assignee === assigneeFilter.toLowerCase() : true
+      const matchesStatus = statusFilter === '' ? true : statusFilter === 'open' ? !ticket.resolved : ticket.resolved
+      const matchesPriority = priorityFilter ? priority === priorityFilter : true
+      const matchesTask = taskFilter ? getTaskFilterValue(ticket.taskContext) === taskFilter : true
+      const matchesClient = clientFilter.id ? String(ticket.clientId || '') === String(clientFilter.id) : true
 
-      return matchesSearch && matchesAssignee && matchesStatus && matchesClient
+      return matchesSearch && matchesAssignee && matchesStatus && matchesPriority && matchesTask && matchesClient
     })
-  }, [tickets, searchTerm, assigneeFilter, statusFilter, clientFilter])
+  }, [tickets, searchTerm, assigneeFilter, statusFilter, priorityFilter, taskFilter, clientFilter])
 
   return (
     <main className="page-container">
       <header className="section-header">
         <div className="section-header__top">
           <div>
-            <p className="eyebrow">Ticketek</p>
-            <h1 className="section-title">Ügyfél ticketkezelő</h1>
-            <p className="section-subtitle">Jegyek rögzítése, állapotuk áttekintése.</p>
+            <p className="eyebrow">{t('tickets.eyebrow')}</p>
+            <h1 className="section-title">{t('tickets.title')}</h1>
+            <p className="section-subtitle">{t('tickets.subtitle')}</p>
           </div>
         </div>
       </header>
 
-      {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
-      {profilesError ? <div className="banner banner-error">Hiba: {profilesError}</div> : null}
+      {error ? (
+        <div className="banner banner-error">
+          {t('common.errorPrefix')} {error}
+        </div>
+      ) : null}
+      {profilesError ? (
+        <div className="banner banner-error">
+          {t('common.errorPrefix')} {profilesError}
+        </div>
+      ) : null}
 
       <section className="content-grid">
         <div className="panel tickets-panel">
           <div className="panel-head">
             <div>
-              <p className="eyebrow">Keresés</p>
-              <h2>Összes ticket</h2>
+              <p className="eyebrow">{t('tickets.searchEyebrow')}</p>
+              <h2>{t('tickets.allTickets')}</h2>
             </div>
             <div className="filter-bar">
               {clientFilter.id ? (
@@ -112,39 +162,59 @@ function TicketsPage({ currentUser }) {
                     next.delete('clientName')
                     setSearchParams(next)
                   }}
-                  title="Ügyfél szűrő törlése"
+                  title={t('tickets.clearClientFilterTitle')}
                 >
-                  {clientFilter.name || 'Kijelölt ügyfél'} ×
+                  {clientFilter.name || t('tickets.selectedClient')} ×
                 </button>
               ) : null}
               <div className="input-shell search-field">
                 <input
                   type="search"
-                  placeholder="Keresés ügyfél, leírás vagy státusz alapján..."
+                  placeholder={t('tickets.searchPlaceholder')}
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(event) => setSearchTerm(event.target.value)}
                 />
               </div>
               <label className="filter-control">
-                <span>Felelős</span>
-                <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
-                  <option value="">Mind</option>
-                  {assigneeOptions.map((u) => {
-                    const value = u.toLowerCase()
+                <span>{t('tickets.assignee')}</span>
+                <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}>
+                  <option value="">{t('common.all')}</option>
+                  {assigneeOptions.map((user) => {
+                    const value = user.toLowerCase()
                     return (
-                      <option key={u} value={value}>
-                        {u}
+                      <option key={user} value={value}>
+                        {user}
                       </option>
                     )
                   })}
                 </select>
               </label>
               <label className="filter-control">
-                <span>Állapot</span>
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="">Mind</option>
-                  <option value="open">Nyitott</option>
-                  <option value="closed">Megoldva</option>
+                <span>{t('tickets.status')}</span>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <option value="">{t('common.all')}</option>
+                  <option value="open">{t('tickets.open')}</option>
+                  <option value="closed">{t('tickets.solved')}</option>
+                </select>
+              </label>
+              <label className="filter-control">
+                <span>{t('tickets.priority')}</span>
+                <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+                  <option value="">{t('common.all')}</option>
+                  <option value="high">{t('tickets.priorityHigh')}</option>
+                  <option value="medium">{t('tickets.priorityMedium')}</option>
+                  <option value="low">{t('tickets.priorityLow')}</option>
+                </select>
+              </label>
+              <label className="filter-control">
+                <span>{t('tickets.taskLink')}</span>
+                <select value={taskFilter} onChange={(event) => setTaskFilter(event.target.value)}>
+                  <option value="">{t('common.all')}</option>
+                  {taskOptions.map((taskOption) => (
+                    <option key={taskOption.value} value={taskOption.value}>
+                      {taskOption.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <span className="pill">{filteredTickets.length}</span>
@@ -170,35 +240,45 @@ function TicketsPage({ currentUser }) {
               </div>
             ) : (
               <>
-                {filteredTickets.map((t) => {
-                  const accent = assigneeColors[(t.assignedTo || '').trim().toLowerCase()]
+                {filteredTickets.map((ticket) => {
+                  const accent = assigneeColors[(ticket.assignedTo || '').trim().toLowerCase()]
+                  const priorityValue = ticket.priority || 'medium'
+                  const dueMeta = getDueMeta(ticket.dueDate)
+                  const taskLinkMeta = getTaskLinkMeta(ticket.taskContext)
                   return (
                     <div
-                      key={t.id}
+                      key={ticket.id}
                       className="ticket-row clickable"
                       style={accent ? { '--ticket-accent': accent } : undefined}
-                      onClick={() => setSelectedTicket(t)}
+                      onClick={() => setSelectedTicket(ticket)}
                     >
                       <div className="ticket-head">
-                        <div className="ticket-client">{t.clientName || 'Ismeretlen ügyfél'}</div>
-                        <div className={`ticket-status ${t.resolved ? 'is-resolved' : 'is-open'}`}>
-                          {t.resolved ? 'Megoldva' : 'Nyitott'}
+                        <div className="ticket-client">{ticket.clientName || t('tickets.unknownClient')}</div>
+                        <div className={`ticket-status ${ticket.resolved ? 'is-resolved' : 'is-open'}`}>
+                          {ticket.resolved ? t('tickets.solved') : t('tickets.open')}
                         </div>
                       </div>
-                      <div className="ticket-desc">{t.description || 'Nincs leírás'}</div>
+                      <div className="ticket-desc">{ticket.description || t('tickets.noDescription')}</div>
                       <div className="ticket-meta">
-                        <span>
-                          {t.createdAt?.toDate
-                            ? t.createdAt.toDate().toLocaleString()
-                            : 'Nincs dátum'}
-                        </span>
-                        {t.clientId ? <span className="muted">ID: {t.clientId}</span> : null}
-                        {t.assignedTo ? <span className="muted">Felelős: {t.assignedTo}</span> : null}
+                        <span>{ticket.createdAt?.toDate ? ticket.createdAt.toDate().toLocaleString() : t('tickets.noDate')}</span>
+                        {ticket.clientId ? <span className="muted">{t('tickets.idPrefix')} {ticket.clientId}</span> : null}
+                        {ticket.assignedTo ? <span className="muted">{t('tickets.assigneePrefix')} {ticket.assignedTo}</span> : null}
+                        <span className={`ticket-priority ${priorityValue}`}>{getPriorityLabel(priorityValue)}</span>
+                        {dueMeta ? (
+                          <span className={dueMeta.className}>
+                            {t('tickets.dueDatePrefix')} {dueMeta.label}
+                          </span>
+                        ) : null}
+                        {taskLinkMeta ? (
+                          <span className={taskLinkMeta.className}>
+                            {t('tickets.taskLinkPrefix')} {taskLinkMeta.label}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   )
                 })}
-                {!filteredTickets.length ? <p className="muted">Nincsenek ticketek.</p> : null}
+                {!filteredTickets.length ? <p className="muted">{t('tickets.noTickets')}</p> : null}
               </>
             )}
           </div>
@@ -206,7 +286,7 @@ function TicketsPage({ currentUser }) {
       </section>
 
       {selectedTicket ? (
-        <Modal onClose={() => setSelectedTicket(null)} title="Ticket részletek">
+        <Modal onClose={() => setSelectedTicket(null)} title={t('tickets.detailsTitle')}>
           <TicketModal
             ticket={selectedTicket}
             onClose={() => setSelectedTicket(null)}
