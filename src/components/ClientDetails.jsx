@@ -49,6 +49,55 @@ function formatAmount(amount, currency) {
   return `${num.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: maxFractionDigits })} ${currency || 'HUF'}`
 }
 
+function formatLocalDateInput(value) {
+  if (!value) return ''
+  const dateValue = value?.toDate ? value.toDate() : value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(dateValue.getTime())) return ''
+  const year = dateValue.getFullYear()
+  const month = String(dateValue.getMonth() + 1).padStart(2, '0')
+  const day = String(dateValue.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function normalizeInputDate(value) {
+  if (!value) return null
+  if (value?.toDate) {
+    const d = value.toDate()
+    if (Number.isNaN(d.getTime())) return null
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  if (value instanceof Date) {
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return null
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  const raw = String(value).trim()
+  if (!raw) return null
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (match) {
+    const year = Number(match[1])
+    const month = Number(match[2]) - 1
+    const day = Number(match[3])
+    const localDate = new Date(year, month, day)
+    if (
+      Number.isNaN(localDate.getTime()) ||
+      localDate.getFullYear() !== year ||
+      localDate.getMonth() !== month ||
+      localDate.getDate() !== day
+    ) {
+      return null
+    }
+    localDate.setHours(0, 0, 0, 0)
+    return localDate
+  }
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  parsed.setHours(0, 0, 0, 0)
+  return parsed
+}
+
 function ClientDetails({
   client,
   actorName,
@@ -73,9 +122,9 @@ function ClientDetails({
   const [invoiceDirection, setInvoiceDirection] = useState('OUTBOUND')
   const [invoiceRange, setInvoiceRange] = useState(() => {
     const today = new Date()
-    const to = today.toISOString().slice(0, 10)
+    const to = formatLocalDateInput(today)
     const startOfYear = new Date(today.getFullYear(), 0, 1)
-    const from = startOfYear.toISOString().slice(0, 10)
+    const from = formatLocalDateInput(startOfYear)
     return { from, to }
   })
   const lastNavStatus = useRef('idle')
@@ -194,7 +243,7 @@ function ClientDetails({
     if (!openSuspended) return
     await updateEvActivityPeriod(clientId, openSuspended.id, {
       from: openSuspended.from,
-      to: toDate || new Date().toISOString().slice(0, 10),
+      to: toDate || formatLocalDateInput(new Date()),
       state: openSuspended.state,
     })
   }
@@ -371,13 +420,7 @@ function ClientDetails({
 }
 
 function toDateInputValue(value) {
-  if (!value) return ''
-  if (value.toDate) {
-    return value.toDate().toISOString().slice(0, 10)
-  }
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toISOString().slice(0, 10)
+  return formatLocalDateInput(value)
 }
 
 function EvStatusForm({ initialValues, onSubmit, loading, error }) {
@@ -508,13 +551,6 @@ function EvActivityForm({ initialValues, onSubmit, loading, error }) {
       </div>
     </form>
   )
-}
-
-function normalizeInputDate(value) {
-  const d = value ? new Date(value) : null
-  if (!d || Number.isNaN(d.getTime())) return null
-  d.setHours(0, 0, 0, 0)
-  return d
 }
 
 function dateInRange(period, dateStr) {

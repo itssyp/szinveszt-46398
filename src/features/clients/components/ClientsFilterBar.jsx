@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { TbLayoutGrid, TbList } from 'react-icons/tb'
 import { defaultViewMode } from '../hooks/useClientFilters'
 import { t } from '../../../i18n'
@@ -15,14 +15,52 @@ function ClientsFilterBar({
   viewMode = defaultViewMode,
   availableYears = [],
   availableStatuses = [],
+  assigneeFilter = '',
+  languageFilter = '',
+  workTypeFilter = '',
+  taxationFilter = '',
+  billingCompanyFilter = '',
+  invoicingFilter = '',
+  utalandoFrequencyFilter = '',
+  afaFilter = '',
+  ipaFilter = '',
+  foodoraFilter = '',
+  woltFilter = '',
+  activityFilter = '',
+  availableAssignees = [],
+  availableLanguages = [],
+  availableWorkTypes = [],
+  availableTaxationTypes = [],
+  availableBillingCompanies = [],
+  availableInvoicingTypes = [],
+  availableUtalandoFrequencies = [],
+  availableAfaTypes = [],
+  availableIpaTypes = [],
+  availableActivities = [],
+  activeDetailedFilterCount = 0,
   onSearchChange,
   onStatusChange,
   onDebtChange,
   onYearChange,
   onMonthChange,
   onSortChange,
+  onAssigneeChange,
+  onLanguageChange,
+  onWorkTypeChange,
+  onTaxationChange,
+  onBillingCompanyChange,
+  onInvoicingChange,
+  onUtalandoFrequencyChange,
+  onAfaChange,
+  onIpaChange,
+  onFoodoraChange,
+  onWoltChange,
+  onActivityChange,
+  onClearDetailedFilters,
   onToggleView,
 }) {
+  const [showDetailed, setShowDetailed] = useState(false)
+
   return (
     <>
       <div className="panel filter-panel">
@@ -95,6 +133,153 @@ function ClientsFilterBar({
             </span>
           </button>
         </div>
+        <div className="filter-bar clients-detailed-controls">
+          <button type="button" className="btn ghost" onClick={() => setShowDetailed((prev) => !prev)}>
+            {showDetailed ? 'Kevesebb szűrő' : 'További szűrők'}
+          </button>
+          {activeDetailedFilterCount ? (
+            <>
+              <span className="pill">{activeDetailedFilterCount} aktív</span>
+              <button type="button" className="btn ghost" onClick={onClearDetailedFilters}>
+                Részletes szűrők törlése
+              </button>
+            </>
+          ) : null}
+        </div>
+
+        {showDetailed ? (
+          <div className="filter-bar clients-detailed-grid">
+            <label className="filter-control">
+              <span>Hozzárendelt személy</span>
+              <select value={assigneeFilter} onChange={(event) => onAssigneeChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableAssignees.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Nyelv</span>
+              <select value={languageFilter} onChange={(event) => onLanguageChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableLanguages.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Munkavégzés jellege</span>
+              <select value={workTypeFilter} onChange={(event) => onWorkTypeChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableWorkTypes.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Adózási forma</span>
+              <select value={taxationFilter} onChange={(event) => onTaxationChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableTaxationTypes.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Cég számlázás</span>
+              <select value={billingCompanyFilter} onChange={(event) => onBillingCompanyChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableBillingCompanies.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Számlázás típusa</span>
+              <select value={invoicingFilter} onChange={(event) => onInvoicingChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableInvoicingTypes.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Utalandó gyakoriság</span>
+              <select
+                value={utalandoFrequencyFilter}
+                onChange={(event) => onUtalandoFrequencyChange(event.target.value)}
+              >
+                <option value="">{t('common.all')}</option>
+                {availableUtalandoFrequencies.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>AFA</span>
+              <select value={afaFilter} onChange={(event) => onAfaChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableAfaTypes.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>IPA</span>
+              <select value={ipaFilter} onChange={(event) => onIpaChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableIpaTypes.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Foodora</span>
+              <select value={foodoraFilter} onChange={(event) => onFoodoraChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                <option value="yes">{t('common.yes')}</option>
+                <option value="no">{t('common.no')}</option>
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>WOLT</span>
+              <select value={woltFilter} onChange={(event) => onWoltChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                <option value="yes">{t('common.yes')}</option>
+                <option value="no">{t('common.no')}</option>
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Tevékenység</span>
+              <select value={activityFilter} onChange={(event) => onActivityChange(event.target.value)}>
+                <option value="">{t('common.all')}</option>
+                {availableActivities.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
       </div>
     </>
   )
@@ -104,6 +289,29 @@ ClientsFilterBar.defaultProps = {
   viewMode: defaultViewMode,
   availableYears: [],
   availableStatuses: [],
+  assigneeFilter: '',
+  languageFilter: '',
+  workTypeFilter: '',
+  taxationFilter: '',
+  billingCompanyFilter: '',
+  invoicingFilter: '',
+  utalandoFrequencyFilter: '',
+  afaFilter: '',
+  ipaFilter: '',
+  foodoraFilter: '',
+  woltFilter: '',
+  activityFilter: '',
+  availableAssignees: [],
+  availableLanguages: [],
+  availableWorkTypes: [],
+  availableTaxationTypes: [],
+  availableBillingCompanies: [],
+  availableInvoicingTypes: [],
+  availableUtalandoFrequencies: [],
+  availableAfaTypes: [],
+  availableIpaTypes: [],
+  availableActivities: [],
+  activeDetailedFilterCount: 0,
 }
 
 export default ClientsFilterBar

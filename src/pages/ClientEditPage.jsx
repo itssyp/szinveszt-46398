@@ -11,6 +11,28 @@ import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { normalizeTaxId } from '../utils/id'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
 
+const CLIENT_STATUS_OPTIONS = ['akt\u00edv', 'lemondta/ kir\u00fagva', 'megsz\u0171nt', 'sz\u00fcnet']
+
+function normalizeClientStatusOption(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (CLIENT_STATUS_OPTIONS.includes(raw)) return raw
+
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
+    .trim()
+
+  if (normalized.startsWith('aktiv')) return 'akt\u00edv'
+  if (normalized.includes('lemondta') || normalized.includes('kirugva')) return 'lemondta/ kir\u00fagva'
+  if (normalized.startsWith('megsz')) return 'megsz\u0171nt'
+  if (normalized.startsWith('szunet')) return 'sz\u00fcnet'
+  return ''
+}
+
 const buildFormDataFromClient = (client, fields) =>
   fields.reduce(
     (acc, field) => {
@@ -44,7 +66,11 @@ const buildFormDataFromClient = (client, fields) =>
           acc[field.key] = ''
         }
       } else {
-        acc[field.key] = current ?? ''
+        if (field.key === 'statusz') {
+          acc[field.key] = normalizeClientStatusOption(current)
+        } else {
+          acc[field.key] = current ?? ''
+        }
       }
       return acc
     },
@@ -89,6 +115,7 @@ function ClientEditPage() {
   const fieldsWithAssignees = useMemo(
     () =>
       fields.map((field) => {
+        if (field.key === 'statusz') return { ...field, options: CLIENT_STATUS_OPTIONS }
         if (field.key !== 'hozzarendeltSzemely') return field
         const baseOptions = Array.isArray(field.options) ? field.options : []
         const mergedOptions = Array.from(new Set([...baseOptions, ...assigneeOptions]))
@@ -112,7 +139,10 @@ function ClientEditPage() {
   }, [client, fields, formInitialized])
 
   const handleChange = (key, value) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
+    setFormData((prev) => ({
+      ...prev,
+      [key]: key === 'statusz' ? normalizeClientStatusOption(value) : value,
+    }))
   }
 
   const isDirty = useMemo(

@@ -12,6 +12,58 @@ const STATUSES = getBillingoStatuses()
 
 export { formatAmount }
 
+function normalizeIsoDate(value) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (!raw) return ''
+  const directMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (directMatch) return raw
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function normalizePaymentStatus(doc) {
+  return String(doc?.payment_status || doc?.paymentStatus || '')
+    .trim()
+    .toLowerCase()
+}
+
+function getDocumentId(doc) {
+  return doc?.id ?? doc?.document_id ?? doc?.documentId ?? null
+}
+
+function dedupeDocumentsById(docs) {
+  const byId = new Map()
+  docs.forEach((doc) => {
+    const id = getDocumentId(doc)
+    if (id === null || id === undefined || id === '') return
+    if (!byId.has(id)) byId.set(id, doc)
+  })
+  return Array.from(byId.values())
+}
+
+function getPaidAmountFallback(doc) {
+  const candidates = [
+    doc?.paid_amount,
+    doc?.paidAmount,
+    doc?.paid_total,
+    doc?.paidTotal,
+    doc?.payment_total,
+    doc?.paymentTotal,
+  ]
+  return candidates.reduce((max, value) => Math.max(max, toNumber(value)), 0)
+}
+
+function getDocumentDueDate(doc) {
+  return normalizeIsoDate(
+    doc?.due_date || doc?.payment_deadline || doc?.deadline_date || doc?.deadline || doc?.dueDate || ''
+  )
+}
+
 export function useDebtsData({ autoLoad = true } = {}) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -20,7 +72,7 @@ export function useDebtsData({ autoLoad = true } = {}) {
   const [progress, setProgress] = useState({
     phase: 'idle',
     note: '',
-    docsByStatus: { expired: 0, outstanding: 0, partially_paid: 0 },
+    docsByStatus: { expired: 0, partially_paid: 0 },
     paymentsDone: 0,
     paymentsTotal: 0,
   })
@@ -45,7 +97,7 @@ export function useDebtsData({ autoLoad = true } = {}) {
     setProgress({
       phase: 'documents',
       note: 'Dokumentumok letöltése...',
-      docsByStatus: { expired: 0, outstanding: 0, partially_paid: 0 },
+      docsByStatus: { expired: 0, partially_paid: 0 },
       paymentsDone: 0,
       paymentsTotal: 0,
     })
@@ -81,17 +133,24 @@ export function useDebtsData({ autoLoad = true } = {}) {
       if (runIdRef.current !== myRunId) return
 
       const debtMap = new Map()
+      const partialDocsFromAnyStatus = []
 
-      for (const status of ['expired', 'outstanding']) {
+      for (const status of ['expired']) {
         const docs = docsByStatus[status] || []
         for (const doc of docs) {
+          const paymentStatus = normalizePaymentStatus(doc)
+          if (paymentStatus === 'partially_paid') {
+            partialDocsFromAnyStatus.push(doc)
+            continue
+          }
+
           const partner = extractPartnerFromDoc(doc)
           if (!partner) continue
-          addToDebtMap(debtMap, partner, doc?.gross_total, 1)
+          addToDebtMap(debtMap, partner, doc?.gross_total, 1, getDocumentDueDate(doc))
         }
       }
 
-      const partialDocs = docsByStatus.partially_paid || []
+      const partialDocs = dedupeDocumentsById([...(docsByStatus.partially_paid || []), ...partialDocsFromAnyStatus])
       setProgress((p) => ({
         ...p,
         phase: 'payments',
@@ -120,17 +179,17 @@ export function useDebtsData({ autoLoad = true } = {}) {
           }
 
           const gross = toNumber(doc?.gross_total)
-          let paidSum = 0
+          let paidSum = getPaidAmountFallback(doc)
 
           try {
             const payments = await getDocumentPayments(doc.id, controller.signal)
             paidSum = payments.reduce((s, pay) => s + toNumber(pay?.price), 0)
           } catch (_e) {
-            paidSum = 0
+            // Fall back to document-level paid totals if payment history is unavailable.
           }
 
           const remaining = Math.max(0, gross - paidSum)
-          if (remaining > 0) addToDebtMap(debtMap, partner, remaining, 1)
+          if (remaining > 0) addToDebtMap(debtMap, partner, remaining, 1, getDocumentDueDate(doc))
 
           paymentsDoneLocal++
           if (runIdRef.current === myRunId) {

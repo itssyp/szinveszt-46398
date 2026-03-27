@@ -1,17 +1,92 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { TbAlertTriangle, TbCircleCheck, TbPlus } from 'react-icons/tb'
-import { addDoc, collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { TbAlertCircle, TbAlertTriangle, TbCircleCheck, TbPlus } from 'react-icons/tb'
+import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useClientsCache } from '../hooks/useClientsCache'
+import useCollectionSubscription from '../hooks/useCollectionSubscription'
 import Modal from '../components/Modal'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { db } from '../firebase'
 import { logClientActivity } from '../utils/clientActivity'
+import { normalizeTaxId } from '../utils/id'
+import { exportUtalandoClientsToExcel } from '../utils/clientExport'
 import { i18n, t } from '../i18n'
 
 const MONTH_LABELS = i18n.tasks.months.full
+
+function getTicketSortMs(ticket) {
+  if (ticket?.updatedAt?.toMillis) return ticket.updatedAt.toMillis()
+  if (ticket?.createdAt?.toMillis) return ticket.createdAt.toMillis()
+  return 0
+}
+
+function normalizeIsoDate(value) {
+  if (!value) return ''
+  if (value && typeof value === 'object' && typeof value.toDate === 'function') {
+    const tsDate = value.toDate()
+    return Number.isNaN(tsDate?.getTime?.()) ? '' : normalizeIsoDate(tsDate)
+  }
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return ''
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const day = String(value.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  if (typeof value === 'number') {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '' : normalizeIsoDate(date)
+  }
+  const raw = String(value).trim()
+  if (!raw) return ''
+  const directMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (directMatch) return raw
+  const ymdMatch = raw.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/)
+  if (ymdMatch) {
+    const year = Number(ymdMatch[1])
+    const month = String(Number(ymdMatch[2])).padStart(2, '0')
+    const day = String(Number(ymdMatch[3])).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  const dmyMatch = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/)
+  if (dmyMatch) {
+    const year = Number(dmyMatch[3])
+    const month = String(Number(dmyMatch[2])).padStart(2, '0')
+    const day = String(Number(dmyMatch[1])).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function isDateInMonth(value, monthKey) {
+  const iso = normalizeIsoDate(value)
+  return Boolean(iso && iso.startsWith(`${monthKey}-`))
+}
+
+function getNextMonthStartIso(year, monthValue) {
+  const yearNum = Number(year)
+  const monthNum = Number(monthValue)
+  const firstDate = new Date(yearNum, monthNum, 1)
+  const isoYear = firstDate.getFullYear()
+  const isoMonth = String(firstDate.getMonth() + 1).padStart(2, '0')
+  const isoDay = String(firstDate.getDate()).padStart(2, '0')
+  return `${isoYear}-${isoMonth}-${isoDay}`
+}
+
+function hasBlockingDebtForMonth(client, nextMonthStartIso) {
+  const debt = Number(client?.billingoDebt || 0)
+  if (debt <= 0) return false
+  const earliestDueDate = normalizeIsoDate(client?.billingoDebtEarliestDueDate)
+  if (!earliestDueDate) return true
+  return earliestDueDate < nextMonthStartIso
+}
 
 const TASK_DEFINITIONS = [
   {
@@ -25,6 +100,9 @@ function MonthlyTaskDetailPage() {
   const navigate = useNavigate()
   const { year, month } = useParams()
   const { clients, loading, error } = useClientsCache()
+  const { data: tickets, error: ticketsError } = useCollectionSubscription('tickets', (coll) =>
+    query(coll, orderBy('createdAt', 'desc'))
+  )
   const { user } = useAuth()
   const { profile, profiles } = useUserProfile()
   const [updatingId, setUpdatingId] = useState('')
@@ -50,7 +128,9 @@ function MonthlyTaskDetailPage() {
   const monthLabel = useMemo(() => MONTH_LABELS[monthIndex] || `Month ${month}`, [monthIndex, month])
   const normalizedMonth = String(month).padStart(2, '0')
   const notificationKey = `${year}-${normalizedMonth}`
+  const nextMonthStartIso = useMemo(() => getNextMonthStartIso(year, normalizedMonth), [year, normalizedMonth])
   const [isClosed, setIsClosed] = useState(false)
+  const [lockedUtalandoClientIds, setLockedUtalandoClientIds] = useState(null)
   const isUtalandoEnabled = taskIds.includes('utalando')
   const isQuarterMonth = useMemo(() => new Set([3, 6, 9, 12]).has(Number(month)), [month])
   const actorName = useMemo(() => {
@@ -65,7 +145,7 @@ function MonthlyTaskDetailPage() {
     [taskIds]
   )
 
-  const utalandoClients = useMemo(() => {
+  const liveUtalandoClients = useMemo(() => {
     if (!isUtalandoEnabled) return []
 
     const isMonthlyFrequency = (value) => {
@@ -79,13 +159,23 @@ function MonthlyTaskDetailPage() {
 
     return clients
       .filter((client) => {
-        const debt = Number(client.billingoDebt || 0)
-        if (debt !== 0) return false
+        if (hasBlockingDebtForMonth(client, nextMonthStartIso)) return false
+        if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
         if (isQuarterMonth) return true
         return isMonthlyFrequency(client.utalandoGyakorisag)
       })
       .sort((a, b) => (a.nev || '').localeCompare(b.nev || '', 'hu'))
-  }, [clients, isUtalandoEnabled, isQuarterMonth])
+  }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey])
+
+  const utalandoClients = useMemo(() => {
+    if (!isUtalandoEnabled) return []
+    if (!isClosed || !Array.isArray(lockedUtalandoClientIds)) return liveUtalandoClients
+    const byClientId = new Map(clients.map((client) => [client.id, client]))
+    return lockedUtalandoClientIds
+      .map((clientId) => byClientId.get(clientId))
+      .filter(Boolean)
+      .sort((a, b) => (a.nev || '').localeCompare(b.nev || '', 'hu'))
+  }, [clients, isClosed, isUtalandoEnabled, liveUtalandoClients, lockedUtalandoClientIds])
 
   const assigneeOptions = useMemo(() => {
     const names = new Set()
@@ -135,19 +225,42 @@ function MonthlyTaskDetailPage() {
     nullasMap,
   ])
 
+  const openUtalandoTicketByClient = useMemo(() => {
+    const next = {}
+    tickets.forEach((ticket) => {
+      if (ticket.resolved) return
+      if (ticket.taskContext?.type !== 'utalando') return
+      if (ticket.taskContext?.monthKey !== notificationKey) return
+      const clientId = String(ticket.clientId || '')
+      if (!clientId) return
+      const current = next[clientId]
+      if (!current || getTicketSortMs(ticket) > getTicketSortMs(current)) {
+        next[clientId] = ticket
+      }
+    })
+    return next
+  }, [tickets, notificationKey])
+
   const utalandoProgress = useMemo(() => {
     const total = utalandoClients.length
-    if (!total) return { total: 0, notified: 0, percent: 0 }
-    const notified = utalandoClients.filter((client) => Boolean(notifiedMap[client.id])).length
-    const percent = Math.round((notified / total) * 100)
-    return { total, notified, percent }
-  }, [utalandoClients, notifiedMap])
+    if (!total) return { total: 0, done: 0, percent: 0 }
+    const done = utalandoClients.filter(
+      (client) => Boolean(notifiedMap[client.id]) || Boolean(nullasMap[client.id])
+    ).length
+    const percent = Math.round((done / total) * 100)
+    return { total, done, percent }
+  }, [utalandoClients, notifiedMap, nullasMap])
 
   useEffect(() => {
     const monthRef = doc(db, 'monthTasks', notificationKey)
     const unsubMonth = onSnapshot(monthRef, (snap) => {
       const data = snap.data() || {}
       setIsClosed(Boolean(data.closed))
+      if (Array.isArray(data.utalandoClientIds)) {
+        setLockedUtalandoClientIds(data.utalandoClientIds.filter((value) => typeof value === 'string'))
+      } else {
+        setLockedUtalandoClientIds(null)
+      }
 
       if (Array.isArray(data.taskIds)) {
         setTaskIds(data.taskIds.filter((value) => typeof value === 'string'))
@@ -189,6 +302,10 @@ function MonthlyTaskDetailPage() {
   }, [isUtalandoEnabled, notificationKey])
 
   const handleNotifyToggle = async (clientId, nextValue) => {
+    if (nextValue && openUtalandoTicketByClient[clientId]) {
+      setUpdateError(t('tasks.detail.errors.openTicketBlocksCompletion'))
+      return
+    }
     setUpdateError('')
     setUpdatingId(clientId)
     try {
@@ -208,6 +325,10 @@ function MonthlyTaskDetailPage() {
   }
 
   const handleNullasToggle = async (clientId, nextValue) => {
+    if (nextValue && openUtalandoTicketByClient[clientId]) {
+      setUpdateError(t('tasks.detail.errors.openTicketBlocksCompletion'))
+      return
+    }
     setUpdateError('')
     setUpdatingId(clientId)
     try {
@@ -226,12 +347,21 @@ function MonthlyTaskDetailPage() {
     }
   }
 
-  const persistMonthMeta = async (nextTaskIds, nextClosed = isClosed) => {
+  const persistMonthMeta = async (
+    nextTaskIds,
+    nextClosed = isClosed,
+    utalandoClientIds = lockedUtalandoClientIds
+  ) => {
+    const normalizedClientIds = Array.isArray(utalandoClientIds)
+      ? utalandoClientIds.filter((value) => typeof value === 'string')
+      : undefined
+
     await setDoc(
       doc(db, 'monthTasks', notificationKey),
       {
         closed: nextClosed,
         taskIds: nextTaskIds,
+        ...(normalizedClientIds ? { utalandoClientIds: normalizedClientIds } : {}),
         year: Number(year),
         month: Number(normalizedMonth),
         updatedAt: serverTimestamp(),
@@ -258,10 +388,43 @@ function MonthlyTaskDetailPage() {
 
   const handleCloseToggle = () => {
     const nextClosed = !isClosed
+    const prevLockedClientIds = lockedUtalandoClientIds
+    const nextLockedClientIds =
+      nextClosed && isUtalandoEnabled ? utalandoClients.map((client) => client.id) : lockedUtalandoClientIds
+
     setIsClosed(nextClosed)
-    persistMonthMeta(taskIds, nextClosed).catch((err) => {
+    if (nextClosed && isUtalandoEnabled) {
+      setLockedUtalandoClientIds(nextLockedClientIds)
+    }
+
+    persistMonthMeta(taskIds, nextClosed, nextLockedClientIds).catch((err) => {
       setUpdateError(err?.message || t('tasks.detail.errors.monthSave'))
       setIsClosed(!nextClosed)
+      setLockedUtalandoClientIds(prevLockedClientIds)
+    })
+  }
+
+  const handleExportUtalando = () => {
+    if (!filteredUtalandoClients.length) return
+
+    const rows = filteredUtalandoClients.map((client) => {
+      const openTaskTicket = openUtalandoTicketByClient[client.id]
+      return {
+        name: client.nev || '',
+        taxId: client.adoszam || '',
+        assignee: client.hozzarendeltSzemely || '',
+        workType: client.munkavegzesJellege || '',
+        frequency: client.utalandoGyakorisag || t('tasks.detail.noFrequency'),
+        notified: Boolean(notifiedMap[client.id]),
+        nullas: Boolean(nullasMap[client.id]),
+        hasOpenTicket: Boolean(openTaskTicket),
+        openTicketId: openTaskTicket?.id || '',
+      }
+    })
+
+    exportUtalandoClientsToExcel(rows, {
+      monthKey: notificationKey,
+      sheetName: 'Utalandok',
     })
   }
 
@@ -272,6 +435,27 @@ function MonthlyTaskDetailPage() {
     setTicketPriority('medium')
     setTicketDueDate('')
     setTicketError('')
+  }
+
+  const handleOpenClientDetails = (client) => {
+    if (!client) return
+    const backTo = `/tasks/${year}/${month}`
+    const tax = client.adoszam
+    const shortTax = tax ? normalizeTaxId(tax) : ''
+    if (shortTax) {
+      navigate(`/clients/tax/${encodeURIComponent(shortTax)}`, { state: { returnTo: backTo } })
+      return
+    }
+    navigate(`/clients/id/${client.id}`, { state: { returnTo: backTo } })
+  }
+
+  const handleOpenTaskTicket = (ticket, client) => {
+    if (!ticket?.id) return
+    const params = new URLSearchParams()
+    params.set('ticketId', ticket.id)
+    if (client?.id) params.set('clientId', client.id)
+    if (client?.nev) params.set('clientName', client.nev)
+    navigate(`/tickets?${params.toString()}`)
   }
 
   const handleCreateTicket = async () => {
@@ -322,7 +506,7 @@ function MonthlyTaskDetailPage() {
     <main className="page-container">
       <header className="section-header">
         <div className="section-header__top section-header__top--centered">
-          <button type="button" className="back-arrow" onClick={() => navigate(-1)}>
+          <button type="button" className="back-arrow" onClick={() => navigate('/tasks')}>
             {'<'}
           </button>
           <div className="section-header__intro">
@@ -389,6 +573,11 @@ function MonthlyTaskDetailPage() {
             {t('common.errorPrefix')} {error}
           </div>
         ) : null}
+        {ticketsError ? (
+          <div className="banner banner-error">
+            {t('common.errorPrefix')} {ticketsError}
+          </div>
+        ) : null}
         {updateError ? (
           <div className="banner banner-error">
             {t('common.errorPrefix')} {updateError}
@@ -406,13 +595,26 @@ function MonthlyTaskDetailPage() {
               <div className="utalando-progress">
                 <div className="utalando-progress__row">
                   <span>
-                    {t('tasks.detail.progressSent')}: {utalandoProgress.notified}/{utalandoProgress.total}
+                    {t('tasks.detail.progressSent')}: {utalandoProgress.done}/{utalandoProgress.total}
                   </span>
                   <span>{utalandoProgress.percent}%</span>
                 </div>
                 <div className="utalando-progress__bar">
                   <div className="utalando-progress__fill" style={{ width: `${utalandoProgress.percent}%` }} />
                 </div>
+              </div>
+            ) : null}
+
+            {!loading && utalandoClients.length ? (
+              <div className="section-actions">
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={handleExportUtalando}
+                  disabled={!filteredUtalandoClients.length}
+                >
+                  Excel export ({filteredUtalandoClients.length})
+                </button>
               </div>
             ) : null}
 
@@ -465,42 +667,86 @@ function MonthlyTaskDetailPage() {
                 {filteredUtalandoClients.map((client) => {
                   const notified = Boolean(notifiedMap[client.id])
                   const nullas = Boolean(nullasMap[client.id])
+                  const openTaskTicket = openUtalandoTicketByClient[client.id]
                   const frequency = client.utalandoGyakorisag || t('tasks.detail.noFrequency')
                   const accent = assigneeColors[(client.hozzarendeltSzemely || '').trim().toLowerCase()]
+                  const endedThisMonth = isDateInMonth(client.megszunesDatuma, notificationKey)
+                  const endDateLabel = endedThisMonth ? normalizeIsoDate(client.megszunesDatuma) : ''
 
                   return (
                     <div
                       key={client.id}
-                      className="ticket-row debt-row utalando-row"
+                      className="ticket-row debt-row utalando-row clickable"
                       style={accent ? { '--ticket-accent': accent } : undefined}
+                      onClick={() => handleOpenClientDetails(client)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          handleOpenClientDetails(client)
+                        }
+                      }}
                     >
                       <div className="ticket-head">
-                        <div className="ticket-client">{client.nev || t('tasks.detail.unknownClient')}</div>
-                        <button
-                          type="button"
-                          className="ticket-flag utalando-ticket-flag"
-                          title={t('tasks.detail.raiseTicket')}
-                          aria-label={t('tasks.detail.raiseTicket')}
-                          onClick={() => handleOpenTicketModal(client)}
-                        >
-                          <TbAlertTriangle aria-hidden="true" />
-                        </button>
+                        <div className="utalando-client-head">
+                          <div className="ticket-client">{client.nev || t('tasks.detail.unknownClient')}</div>
+                          {endedThisMonth ? (
+                            <span className="pill pill-quiet">
+                              {t('tasks.detail.endedThisMonth')}
+                              {endDateLabel ? ` (${endDateLabel})` : ''}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="utalando-ticket-actions">
+                          {openTaskTicket ? (
+                            <button
+                              type="button"
+                              className="ticket-flag utalando-open-ticket-flag"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleOpenTaskTicket(openTaskTicket, client)
+                              }}
+                              title={t('tasks.detail.openTicketAction')}
+                              aria-label={t('tasks.detail.openTicketAction')}
+                            >
+                              <TbAlertCircle aria-hidden="true" />
+                              <span>{t('tasks.detail.openTicketAction')}</span>
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="ticket-flag utalando-ticket-flag"
+                            title={t('tasks.detail.raiseTicket')}
+                            aria-label={t('tasks.detail.raiseTicket')}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleOpenTicketModal(client)
+                            }}
+                          >
+                            <TbAlertTriangle aria-hidden="true" />
+                          </button>
+                        </div>
                       </div>
                       <div className="ticket-meta">
                         {client.adoszam ? <span className="muted">{t('tasks.detail.taxPrefix')} {client.adoszam}</span> : null}
-                        {client.email ? <span className="muted">{t('tasks.detail.emailPrefix')} {client.email}</span> : null}
+                        {client.munkavegzesJellege ? (
+                          <span className="muted">
+                            {t('tasks.detail.munkavegzesJellegePrefix')} {client.munkavegzesJellege}
+                          </span>
+                        ) : null}
                         {client.hozzarendeltSzemely ? (
                           <span className="muted">{t('tasks.detail.assigneePrefix')} {client.hozzarendeltSzemely}</span>
                         ) : null}
                         <span className="muted">{t('tasks.detail.frequencyPrefix')} {frequency}</span>
                       </div>
-                      <div className="utalando-actions">
+                      <div className="utalando-actions" onClick={(event) => event.stopPropagation()}>
                         <label className="switch utalando-switch">
                           <input
                             type="checkbox"
                             checked={notified}
                             onChange={(event) => handleNotifyToggle(client.id, event.target.checked)}
-                            disabled={updatingId === client.id}
+                            disabled={updatingId === client.id || (Boolean(openTaskTicket) && !notified)}
                           />
                           <span className="switch-slider" />
                         </label>
@@ -512,7 +758,7 @@ function MonthlyTaskDetailPage() {
                             type="checkbox"
                             checked={nullas}
                             onChange={(event) => handleNullasToggle(client.id, event.target.checked)}
-                            disabled={updatingId === client.id}
+                            disabled={updatingId === client.id || (Boolean(openTaskTicket) && !nullas)}
                           />
                           <span className="switch-slider" />
                         </label>

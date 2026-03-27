@@ -9,6 +9,28 @@ import { buildExistingIdSet } from '../features/clients/utils/clientDates'
 import { normalizeNumericId } from '../utils/id'
 import { db } from '../firebase'
 
+const CLIENT_STATUS_OPTIONS = ['akt\u00edv', 'lemondta/ kir\u00fagva', 'megsz\u0171nt', 'sz\u00fcnet']
+
+function normalizeClientStatusOption(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (CLIENT_STATUS_OPTIONS.includes(raw)) return raw
+
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
+    .trim()
+
+  if (normalized.startsWith('aktiv')) return 'akt\u00edv'
+  if (normalized.includes('lemondta') || normalized.includes('kirugva')) return 'lemondta/ kir\u00fagva'
+  if (normalized.startsWith('megsz')) return 'megsz\u0171nt'
+  if (normalized.startsWith('szunet')) return 'sz\u00fcnet'
+  return ''
+}
+
 function ClientCreatePage() {
   const navigate = useNavigate()
   const { fields, groups, emptyClientTemplate, loading: schemaLoading, error: schemaError } = useClientSchema()
@@ -35,6 +57,7 @@ function ClientCreatePage() {
   const fieldsWithAssignees = useMemo(
     () =>
       fields.map((field) => {
+        if (field.key === 'statusz') return { ...field, options: CLIENT_STATUS_OPTIONS }
         if (field.key !== 'hozzarendeltSzemely') return field
         const baseOptions = Array.isArray(field.options) ? field.options : []
         const mergedOptions = Array.from(new Set([...baseOptions, ...assigneeOptions]))
@@ -44,7 +67,10 @@ function ClientCreatePage() {
   )
 
   const handleChange = (key, value) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
+    setFormData((prev) => ({
+      ...prev,
+      [key]: key === 'statusz' ? normalizeClientStatusOption(value) : value,
+    }))
   }
 
   const handleSubmit = async (event) => {

@@ -6,6 +6,61 @@ import { db } from '../../../firebase'
 import { mergeMonthlyIncomes } from '../../imports/utils/incomeImport'
 import { logClientActivity } from '../../../utils/clientActivity'
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
+function formatLocalDate(value) {
+  if (!value) return '-'
+  if (typeof value === 'string') {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (dateOnly) return value
+  }
+  const dateValue = value?.toDate ? value.toDate() : value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(dateValue.getTime())) return '-'
+  const year = dateValue.getFullYear()
+  const month = String(dateValue.getMonth() + 1).padStart(2, '0')
+  const day = String(dateValue.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDateOnly(value) {
+  if (!value) return null
+  if (value?.toDate) {
+    const d = value.toDate()
+    if (Number.isNaN(d.getTime())) return null
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  if (value instanceof Date) {
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return null
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  const raw = String(value).trim()
+  if (!raw) return null
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dateOnly) {
+    const year = Number(dateOnly[1])
+    const month = Number(dateOnly[2]) - 1
+    const day = Number(dateOnly[3])
+    const d = new Date(year, month, day)
+    if (
+      Number.isNaN(d.getTime()) ||
+      d.getFullYear() !== year ||
+      d.getMonth() !== month ||
+      d.getDate() !== day
+    ) {
+      return null
+    }
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  parsed.setHours(0, 0, 0, 0)
+  return parsed
+}
+
 export function GeneralTab({ groups, labels, client, fields, formatValue }) {
   return groups.map((group) => (
     <div key={group.title} className="details-section details-section--line">
@@ -361,17 +416,13 @@ export function ActivityTab({ activitiesLoading, activities }) {
 }
 
 function formatDate(value) {
-  if (!value) return '-'
-  if (value.toDate) return value.toDate().toISOString().slice(0, 10)
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '-'
-  return d.toISOString().slice(0, 10)
+  return formatLocalDate(value)
 }
 
 function findGaps(items, startKey = 'validFrom', endKey = 'validTo') {
   const sorted = [...items].sort((a, b) => {
-    const aDate = a[startKey]?.toDate ? a[startKey].toDate() : new Date(a[startKey] || 0)
-    const bDate = b[startKey]?.toDate ? b[startKey].toDate() : new Date(b[startKey] || 0)
+    const aDate = parseDateOnly(a[startKey]) || new Date(0)
+    const bDate = parseDateOnly(b[startKey]) || new Date(0)
     return aDate - bDate
   })
   const gaps = []
@@ -379,9 +430,9 @@ function findGaps(items, startKey = 'validFrom', endKey = 'validTo') {
     const prevEnd = sorted[i - 1][endKey]
     const currentStart = sorted[i][startKey]
     if (prevEnd && currentStart) {
-      const prev = prevEnd.toDate ? prevEnd.toDate() : new Date(prevEnd)
-      const curr = currentStart.toDate ? currentStart.toDate() : new Date(currentStart)
-      if (prev.getTime() + 24 * 60 * 60 * 1000 < curr.getTime()) {
+      const prev = parseDateOnly(prevEnd)
+      const curr = parseDateOnly(currentStart)
+      if (prev && curr && prev.getTime() + ONE_DAY_MS < curr.getTime()) {
         gaps.push({ from: prevEnd, to: currentStart })
       }
     }

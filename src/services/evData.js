@@ -16,10 +16,44 @@ const MAX_DATE = new Date(8640000000000000)
 
 function normalizeDate(input) {
   if (!input) return null
-  const d = input instanceof Date ? new Date(input) : new Date(String(input))
-  if (Number.isNaN(d.getTime())) return null
-  d.setHours(0, 0, 0, 0)
-  return d
+  if (input?.toDate) {
+    const fromTimestamp = input.toDate()
+    if (Number.isNaN(fromTimestamp.getTime())) return null
+    fromTimestamp.setHours(0, 0, 0, 0)
+    return fromTimestamp
+  }
+
+  if (input instanceof Date) {
+    const fromDate = new Date(input)
+    if (Number.isNaN(fromDate.getTime())) return null
+    fromDate.setHours(0, 0, 0, 0)
+    return fromDate
+  }
+
+  const raw = String(input).trim()
+  if (!raw) return null
+  const localDateMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (localDateMatch) {
+    const year = Number(localDateMatch[1])
+    const month = Number(localDateMatch[2]) - 1
+    const day = Number(localDateMatch[3])
+    const localDate = new Date(year, month, day)
+    if (
+      Number.isNaN(localDate.getTime()) ||
+      localDate.getFullYear() !== year ||
+      localDate.getMonth() !== month ||
+      localDate.getDate() !== day
+    ) {
+      return null
+    }
+    localDate.setHours(0, 0, 0, 0)
+    return localDate
+  }
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  parsed.setHours(0, 0, 0, 0)
+  return parsed
 }
 
 function toTimestamp(date) {

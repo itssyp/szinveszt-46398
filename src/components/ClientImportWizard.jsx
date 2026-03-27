@@ -15,6 +15,12 @@ import {
 } from '../features/imports/utils/clientImport'
 
 const PREVIEW_LIMIT = 10
+const hasImportValue = (value) => {
+  if (value === undefined || value === null) return false
+  if (typeof value === 'string') return value.trim() !== ''
+  if (Array.isArray(value)) return value.length > 0
+  return true
+}
 
 function ClientImportWizard({ onClose, clients = [], onComplete, variant = 'modal' }) {
   const [step, setStep] = useState('upload')
@@ -152,7 +158,9 @@ function ClientImportWizard({ onClose, clients = [], onComplete, variant = 'moda
 
     try {
       for (const row of preview.validRows) {
-        const payload = row.data
+        const payload = Object.fromEntries(
+          Object.entries(row.data || {}).filter(([, value]) => hasImportValue(value))
+        )
         let clientIdForActivity = row.targetId || payload.id || payload.clientId || ''
         if (row.action === 'update' && row.targetId) {
           const ref = doc(coll, row.targetId)

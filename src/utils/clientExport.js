@@ -26,3 +26,37 @@ export function exportClientsToExcel(clients) {
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   XLSX.writeFile(workbook, `ugyfelek-export-${stamp}.xlsx`)
 }
+
+export function exportUtalandoClientsToExcel(rows = [], { monthKey = '', sheetName = 'Utalandok' } = {}) {
+  const headers = [
+    'Nev',
+    'Adoszam',
+    'Hozzarendelt szemely',
+    'Munkavegzes jellege',
+    'Utalando gyakorisag',
+    'Elkuldve',
+    'Nullas',
+    'Nyitott ticket',
+    'Nyitott ticket ID',
+  ]
+
+  const body = rows.map((row) => [
+    formatExportValue(row?.name),
+    formatExportValue(row?.taxId),
+    formatExportValue(row?.assignee),
+    formatExportValue(row?.workType),
+    formatExportValue(row?.frequency),
+    row?.notified ? 'igen' : 'nem',
+    row?.nullas ? 'igen' : 'nem',
+    row?.hasOpenTicket ? 'igen' : 'nem',
+    formatExportValue(row?.openTicketId),
+  ])
+
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...body])
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, sheetName)
+
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const monthPart = monthKey ? `-${monthKey}` : ''
+  XLSX.writeFile(workbook, `utalandok${monthPart}-${stamp}.xlsx`)
+}

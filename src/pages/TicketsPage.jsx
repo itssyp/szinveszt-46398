@@ -1,16 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { orderBy, query } from 'firebase/firestore'
+import { addDoc, collection, orderBy, query, serverTimestamp } from 'firebase/firestore'
 import useCollectionSubscription from '../hooks/useCollectionSubscription'
 import Modal from '../components/Modal'
 import TicketModal from '../components/TicketModal'
+import TicketCreateModal from '../components/TicketCreateModal'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
+import { db } from '../firebase'
 import { t } from '../i18n'
 
 const getPriorityLabel = (priority) => {
   if (priority === 'high') return t('tickets.priorityHigh')
   if (priority === 'low') return t('tickets.priorityLow')
   return t('tickets.priorityMedium')
+}
+
+const getTicketSortMs = (ticket) => {
+  if (ticket?.updatedAt?.toMillis) return ticket.updatedAt.toMillis()
+  if (ticket?.createdAt?.toMillis) return ticket.createdAt.toMillis()
+  return 0
 }
 
 const getDueMeta = (dueDate) => {
@@ -47,6 +55,14 @@ function TicketsPage({ currentUser }) {
   )
   const { profiles, profilesError } = useUserProfile()
   const [selectedTicket, setSelectedTicket] = useState(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createClientName, setCreateClientName] = useState('')
+  const [createDescription, setCreateDescription] = useState('')
+  const [createAssignee, setCreateAssignee] = useState(currentUser || '')
+  const [createPriority, setCreatePriority] = useState('medium')
+  const [createDueDate, setCreateDueDate] = useState('')
+  const [createSaving, setCreateSaving] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -71,6 +87,68 @@ function TicketsPage({ currentUser }) {
       setClientFilter({ id: '', name: '' })
     }
   }, [searchParams])
+
+  useEffect(() => {
+    const ticketId = searchParams.get('ticketId') || ''
+    if (!ticketId) return
+    const match = tickets.find((ticket) => ticket.id === ticketId)
+    if (match) {
+      setSelectedTicket(match)
+    }
+  }, [searchParams, tickets])
+
+  const handleOpenCreate = () => {
+    setCreateOpen(true)
+    setCreateClientName('')
+    setCreateDescription('')
+    setCreateAssignee(currentUser || '')
+    setCreatePriority('medium')
+    setCreateDueDate('')
+    setCreateError('')
+  }
+
+  const handleCloseCreate = () => {
+    setCreateOpen(false)
+    setCreateError('')
+  }
+
+  const handleCreateTicket = async () => {
+    if (!createDescription.trim() || !createAssignee) {
+      setCreateError(t('tickets.create.requiredError'))
+      return
+    }
+
+    try {
+      setCreateSaving(true)
+      setCreateError('')
+      await addDoc(collection(db, 'tickets'), {
+        clientId: '',
+        clientName: createClientName.trim() || t('tickets.unknownClient'),
+        description: createDescription.trim(),
+        status: t('tickets.open'),
+        createdBy: currentUser || 'Ismeretlen',
+        assignedTo: createAssignee,
+        priority: createPriority || 'medium',
+        dueDate: createDueDate || '',
+        resolved: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser || 'Ismeretlen',
+        comments: [],
+      })
+      setCreateOpen(false)
+      setCreateClientName('')
+      setCreateDescription('')
+      setCreateAssignee(currentUser || '')
+      setCreatePriority('medium')
+      setCreateDueDate('')
+      setCreateError('')
+    } catch (err) {
+      setCreateError(err?.message || 'Ticket létrehozása sikertelen')
+    } finally {
+      setCreateSaving(false)
+    }
+  }
 
   const assigneeColors = useMemo(() => {
     const map = {}
@@ -102,22 +180,27 @@ function TicketsPage({ currentUser }) {
 
   const filteredTickets = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    return tickets.filter((ticket) => {
-      const name = (ticket.clientName || '').toLowerCase()
-      const desc = (ticket.description || '').toLowerCase()
-      const statusText = ticket.resolved ? 'megoldva' : 'nyitott'
-      const assignee = (ticket.assignedTo || '').toLowerCase()
-      const priority = String(ticket.priority || 'medium').toLowerCase()
+    return tickets
+      .filter((ticket) => {
+        const name = (ticket.clientName || '').toLowerCase()
+        const desc = (ticket.description || '').toLowerCase()
+        const statusText = ticket.resolved ? 'megoldva' : 'nyitott'
+        const assignee = (ticket.assignedTo || '').toLowerCase()
+        const priority = String(ticket.priority || 'medium').toLowerCase()
 
-      const matchesSearch = !term || name.includes(term) || desc.includes(term) || statusText.includes(term)
-      const matchesAssignee = assigneeFilter ? assignee === assigneeFilter.toLowerCase() : true
-      const matchesStatus = statusFilter === '' ? true : statusFilter === 'open' ? !ticket.resolved : ticket.resolved
-      const matchesPriority = priorityFilter ? priority === priorityFilter : true
-      const matchesTask = taskFilter ? getTaskFilterValue(ticket.taskContext) === taskFilter : true
-      const matchesClient = clientFilter.id ? String(ticket.clientId || '') === String(clientFilter.id) : true
+        const matchesSearch = !term || name.includes(term) || desc.includes(term) || statusText.includes(term)
+        const matchesAssignee = assigneeFilter ? assignee === assigneeFilter.toLowerCase() : true
+        const matchesStatus = statusFilter === '' ? true : statusFilter === 'open' ? !ticket.resolved : ticket.resolved
+        const matchesPriority = priorityFilter ? priority === priorityFilter : true
+        const matchesTask = taskFilter ? getTaskFilterValue(ticket.taskContext) === taskFilter : true
+        const matchesClient = clientFilter.id ? String(ticket.clientId || '') === String(clientFilter.id) : true
 
-      return matchesSearch && matchesAssignee && matchesStatus && matchesPriority && matchesTask && matchesClient
-    })
+        return matchesSearch && matchesAssignee && matchesStatus && matchesPriority && matchesTask && matchesClient
+      })
+      .sort((a, b) => {
+        if (Boolean(a.resolved) !== Boolean(b.resolved)) return a.resolved ? 1 : -1
+        return getTicketSortMs(b) - getTicketSortMs(a)
+      })
   }, [tickets, searchTerm, assigneeFilter, statusFilter, priorityFilter, taskFilter, clientFilter])
 
   return (
@@ -151,6 +234,9 @@ function TicketsPage({ currentUser }) {
               <h2>{t('tickets.allTickets')}</h2>
             </div>
             <div className="filter-bar">
+              <button type="button" className="btn" onClick={handleOpenCreate}>
+                {t('tickets.create.createButton')}
+              </button>
               {clientFilter.id ? (
                 <button
                   type="button"
@@ -294,6 +380,29 @@ function TicketsPage({ currentUser }) {
             assigneeOptions={assigneeOptions}
           />
         </Modal>
+      ) : null}
+
+      {createOpen ? (
+        <TicketCreateModal
+          client={null}
+          clientName={createClientName}
+          onChangeClientName={setCreateClientName}
+          allowClientEdit
+          description={createDescription}
+          onChangeDescription={setCreateDescription}
+          assignedTo={createAssignee}
+          onChangeAssignedTo={setCreateAssignee}
+          priority={createPriority}
+          onChangePriority={setCreatePriority}
+          dueDate={createDueDate}
+          onChangeDueDate={setCreateDueDate}
+          currentUser={currentUser}
+          assigneeOptions={assigneeOptions}
+          saving={createSaving}
+          error={createError}
+          onCancel={handleCloseCreate}
+          onSubmit={handleCreateTicket}
+        />
       ) : null}
     </main>
   )

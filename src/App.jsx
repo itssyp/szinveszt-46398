@@ -17,6 +17,7 @@ import ClientExportPage from './pages/ClientExportPage.jsx'
 import Bevallas58Page from './pages/Bevallas58Page.jsx'
 import MonthlyTasksPage from './pages/MonthlyTasksPage.jsx'
 import MonthlyTaskDetailPage from './pages/MonthlyTaskDetailPage.jsx'
+import SzjaTasksPage from './pages/SzjaTasksPage.jsx'
 import CalendarPage from './pages/CalendarPage.jsx'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { UserProfileProvider, useUserProfile } from './hooks/useUserProfile.jsx'
@@ -62,6 +63,7 @@ function AppShell() {
   } = useUserProfile()
   const location = useLocation()
   const [clientMenuOpen, setClientMenuOpen] = useState(false)
+  const [tasksMenuOpen, setTasksMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [seenNotificationKeys, setSeenNotificationKeys] = useState({})
   const [deletedNotificationKeys, setDeletedNotificationKeys] = useState({})
@@ -71,6 +73,10 @@ function AppShell() {
   )
   const clientsSectionActive =
     location.pathname.startsWith('/clients') || location.pathname.startsWith('/client-schema')
+  const tasksSectionActive = location.pathname.startsWith('/tasks')
+  const monthlyTasksActive =
+    location.pathname === '/tasks' || /^\/tasks\/\d{4}\/\d{2}$/.test(location.pathname)
+  const szjaTasksActive = location.pathname === '/tasks/szja'
 
   const displayName = useMemo(() => {
     if (profile?.username) return profile.username
@@ -156,6 +162,7 @@ function AppShell() {
 
   useEffect(() => {
     setClientMenuOpen(false)
+    setTasksMenuOpen(false)
   }, [location.pathname])
 
   useEffect(() => {
@@ -314,12 +321,34 @@ function AppShell() {
           >
             {t('app.nav.tickets')}
           </NavLink>
-          <NavLink
-            to="/tasks"
-            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+          <div
+            className={`nav-dropdown${tasksSectionActive ? ' active' : ''}`}
+            onMouseLeave={() => setTasksMenuOpen(false)}
           >
-            {t('app.nav.tasks')}
-          </NavLink>
+            <button
+              className={`nav-link nav-dropdown__toggle${tasksSectionActive ? ' active' : ''}`}
+              type="button"
+              onClick={() => setTasksMenuOpen((v) => !v)}
+            >
+              {t('app.nav.tasks')}
+            </button>
+            <div className={`nav-dropdown__menu${tasksMenuOpen ? ' is-open' : ''}`}>
+              <NavLink
+                to="/tasks"
+                className={() => `nav-link${monthlyTasksActive ? ' active' : ''}`}
+                onClick={() => setTasksMenuOpen(false)}
+              >
+                {t('app.nav.tasksMonthly')}
+              </NavLink>
+              <NavLink
+                to="/tasks/szja"
+                className={() => `nav-link${szjaTasksActive ? ' active' : ''}`}
+                onClick={() => setTasksMenuOpen(false)}
+              >
+                {t('app.nav.tasksSzja')}
+              </NavLink>
+            </div>
+          </div>
           <NavLink
             to="/calendar"
             className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
@@ -420,6 +449,7 @@ function AppShell() {
         <Route path="/clients/id/:clientId/edit" element={<ClientEditPage />} />
         <Route path="/bevallas/58" element={<Bevallas58Page />} />
         <Route path="/tasks" element={<MonthlyTasksPage />} />
+        <Route path="/tasks/szja" element={<SzjaTasksPage />} />
         <Route path="/tasks/:year/:month" element={<MonthlyTaskDetailPage />} />
         <Route path="/calendar" element={<CalendarPage currentUser={displayName} userProfiles={profiles || []} />} />
         <Route

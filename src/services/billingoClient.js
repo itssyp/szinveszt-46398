@@ -1,7 +1,7 @@
 import { getAuth } from 'firebase/auth'
 import { firebaseApp } from '../firebase'
 
-const STATUSES = ['expired']
+const STATUSES = ['expired', 'partially_paid']
 const PER_PAGE = 100
 
 // Proxy base

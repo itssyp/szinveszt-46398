@@ -33,9 +33,12 @@ const normalizeDate = (value) => {
 
 const normalizeBoolean = (value) => {
   if (typeof value === 'boolean') return value
+  if (value === undefined || value === null) return ''
   const text = baseNormalizer(value).toLowerCase()
-  if (!text) return false
-  return ['true', '1', 'yes', 'igen', 'y', 'aktív', 'aktiv'].includes(text)
+  if (!text) return ''
+  if (['true', '1', 'yes', 'igen', 'y', 'aktiv', 'aktív', 'active'].includes(text)) return true
+  if (['false', '0', 'no', 'nem', 'n', 'inaktiv', 'inaktív', 'inactive'].includes(text)) return false
+  return ''
 }
 
 const emailValidator = (value) => {
@@ -111,16 +114,16 @@ const typeValidators = {
 
 export const clientImportSchema = defaultFieldDefinitions.map((field) => {
   const normalizer = typeNormalizers[field.type] || baseNormalizer
+  const isRequired = field.key === 'adoszam'
   const validators = []
-  if (field.key === 'nev') validators.push(requiredValidator)
-  if (field.key === 'adoszam') validators.push(requiredValidator)
+  if (isRequired) validators.push(requiredValidator)
   if (field.key in typeValidators) validators.push(typeValidators[field.key])
   const synonyms = defaultSynonyms[field.key] || []
 
   return {
     key: field.key,
     label: field.label,
-    required: field.key === 'nev' || field.key === 'adoszam',
+    required: isRequired,
     type: field.type || 'text',
     synonyms,
     normalizer,
@@ -135,4 +138,3 @@ export const clientImportSchema = defaultFieldDefinitions.map((field) => {
 })
 
 export const REQUIRED_FIELDS = clientImportSchema.filter((f) => f.required).map((f) => f.key)
-

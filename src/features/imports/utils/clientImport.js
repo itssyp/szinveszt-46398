@@ -48,10 +48,7 @@ export function buildDedupIndexes(clients) {
 export function classifyActions(rows, dedup) {
   return rows.map((row) => {
     const tax = normalizeTax(row.data.adoszam)
-    const email = normalizeEmail(row.data.email)
-    const phone = normalizePhone(row.data.telefonszam)
-    const existingId =
-      (tax && dedup.byTax.get(tax)) || (email && dedup.byEmail.get(email)) || (phone && dedup.byPhone.get(phone))
+    const existingId = tax ? dedup.byTax.get(tax) : null
     return { ...row, action: existingId ? 'update' : 'create', targetId: existingId || null }
   })
 }

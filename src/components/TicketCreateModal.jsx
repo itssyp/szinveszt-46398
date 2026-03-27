@@ -5,6 +5,9 @@ import { t } from '../i18n'
 
 function TicketCreateModal({
   client,
+  clientName = '',
+  onChangeClientName,
+  allowClientEdit = false,
   description,
   onChangeDescription,
   assignedTo,
@@ -21,10 +24,11 @@ function TicketCreateModal({
   onSubmit,
 }) {
   const options = Array.from(new Set([currentUser, ...assigneeOptions].filter(Boolean)))
-  const clientName = client?.nev || t('tickets.unknownClient')
+  const resolvedClientName = allowClientEdit ? clientName : client?.nev || t('tickets.unknownClient')
+  const titleClientName = resolvedClientName || t('tickets.unknownClient')
 
   return (
-    <Modal title={t('tickets.create.title', { clientName })} onClose={onCancel}>
+    <Modal title={t('tickets.create.title', { clientName: titleClientName })} onClose={onCancel}>
       <div className="details">
         {error ? <div className="banner banner-error">{t('common.errorPrefix')} {error}</div> : null}
         <div className="details-section">
@@ -32,7 +36,13 @@ function TicketCreateModal({
           <div className="ticket-form">
             <div className="form-field">
               <span>{t('tickets.create.client')}</span>
-              <input type="text" value={clientName} disabled />
+              <input
+                type="text"
+                value={resolvedClientName}
+                onChange={(event) => onChangeClientName?.(event.target.value)}
+                disabled={!allowClientEdit}
+                placeholder={allowClientEdit ? t('tickets.unknownClient') : ''}
+              />
             </div>
             <div className="form-field">
               <span>{t('tickets.create.assignee')}</span>

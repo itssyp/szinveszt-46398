@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { TbArrowLeft } from 'react-icons/tb'
 import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore'
 import ClientDetails from '../components/ClientDetails'
@@ -27,6 +27,7 @@ const NAV_KEYS = [
 function ClientDetailsPage() {
   const { taxNumber, clientId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { clients, loading: clientsLoading, error: clientsError } = useClientsCache()
   const { fields, groups, loading: schemaLoading, error: schemaError } = useClientSchema()
   const [client, setClient] = useState(null)
@@ -184,6 +185,15 @@ function ClientDetailsPage() {
     navigate(`/clients/id/${docId}/edit`)
   }
 
+  const handleBack = () => {
+    const returnTo = location.state?.returnTo
+    if (typeof returnTo === 'string' && returnTo.trim()) {
+      navigate(returnTo)
+      return
+    }
+    navigate('/clients')
+  }
+
   return (
     <main className="page-container slide-in-right">
       <header className="section-header">
@@ -192,7 +202,7 @@ function ClientDetailsPage() {
             type="button"
             className="back-arrow"
             aria-label="Vissza"
-            onClick={() => navigate('/clients')}
+            onClick={handleBack}
           >
             <TbArrowLeft />
           </button>

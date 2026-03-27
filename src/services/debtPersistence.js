@@ -34,6 +34,8 @@ export async function persistDebtsToClients({ debts, runIdRef, runId }) {
         billingoDebt: toNumber(row.debt),
         billingoDebtInvoices: row.invoiceCount || 0,
         billingoDebtPartnerId: row.id || '',
+        billingoDebtEarliestDueDate: row.earliestDueDate || '',
+        billingoDebtLatestDueDate: row.latestDueDate || '',
         billingoDebtUpdatedAt: now,
       })
 

@@ -11,11 +11,21 @@ describe('normalizers', () => {
     expect(value).toBe('test@example.com')
   })
 
+  it('keeps empty boolean cell empty', () => {
+    const field = getField('navOnlineActive')
+    const value = normalizeCell(field, '')
+    expect(value).toBe('')
+  })
 })
 
 describe('validators', () => {
-  it('flags missing required name', () => {
+  it('does not require name', () => {
     const field = getField('nev')
+    expect(validateField(field, '')).toBeNull()
+  })
+
+  it('flags missing required tax number', () => {
+    const field = getField('adoszam')
     expect(validateField(field, '')).toBeTruthy()
   })
 
