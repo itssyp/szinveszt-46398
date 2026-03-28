@@ -1,15 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { TbFlag } from 'react-icons/tb'
+import { doc, updateDoc } from 'firebase/firestore'
+import * as XLSX from 'xlsx'
+import Modal from '../components/Modal'
+import { statusClass } from '../components/ClientCards'
+import { db } from '../firebase'
 import { useClientsCache } from '../hooks/useClientsCache'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
-import { doc, updateDoc } from 'firebase/firestore'
-import { db } from '../firebase'
-import * as XLSX from 'xlsx'
-import { statusClass } from '../components/ClientCards'
+import { useUserProfile } from '../hooks/useUserProfile.jsx'
 
 const START_2025 = new Date(2025, 0, 1)
 const START_2025_JAN_2 = new Date(2025, 0, 2)
 const START_2026 = new Date(2026, 0, 1)
+const SZJA_CHECKLIST_FIELDS = [
+  { key: 'bevallasElkeszitve', label: 'SZJA elkészítve' },
+  { key: 'bevallasBeadva', label: 'SZJA beadva' },
+  { key: 'szjaErtesitoKikulve', label: 'SZJA értesítő' },
+  { key: 'szjaSzamlaFizetve', label: 'SZJA számla' },
+  { key: 'hipaBeadva', label: 'IPA beadva' },
+  { key: 'hipaErtesitoKikulve', label: 'IPA értesítő' },
+]
 
 function normalizeStatus(value) {
   return String(value || '')
@@ -155,11 +165,55 @@ function classifyClientForSzja(client) {
   }
 }
 
-const toggleSzjaValue = async (clientId, currentSzja2025, field, value) => {
+function getVisibleItems(items, searchTerm, assigneeFilter = '') {
+  const term = String(searchTerm || '').trim().toLowerCase()
+  const assigneeTerm = String(assigneeFilter || '').trim().toLowerCase()
+  return items.filter(({ client }) => {
+    const name = String(client.nev || '').toLowerCase()
+    const adoszam = String(client.adoszam || '').toLowerCase()
+    const assignedTo = String(client.szja2025?.assignedTo || '').trim().toLowerCase()
+    const matchesAssignee = !assigneeTerm || assignedTo === assigneeTerm
+    const matchesSearch = !term || name.includes(term) || adoszam.includes(term)
+    return matchesAssignee && matchesSearch
+  })
+}
+
+function getStepSummary(szja = {}) {
+  const total = SZJA_CHECKLIST_FIELDS.length
+  const done = SZJA_CHECKLIST_FIELDS.filter(({ key }) => Boolean(szja[key])).length
+  const percent = total ? Math.round((done / total) * 100) : 0
+  return { total, done, percent }
+}
+
+function getProgressSummary(items) {
+  const total = items.length
+  if (!total) return { total: 0, done: 0, percent: 0 }
+  const done = items.filter(({ client }) => Boolean(client.szja2025?.bevallasBeadva)).length
+  const percent = Math.round((done / total) * 100)
+  return { total, done, percent }
+}
+
+function getDisplayIpa(client) {
+  return client.ipa || client.szja2025?.hipaValasztas || ''
+}
+
+function getAssigneeAccentClass(value) {
+  const slug = String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+
+  return slug ? `assignee-${slug}` : ''
+}
+
+const toggleSzjaValue = async (clientId, field, value) => {
   try {
     const ref = doc(db, 'clients', clientId)
     await updateDoc(ref, {
-      [`szja2025.${field}`]: value
+      [`szja2025.${field}`]: value,
     })
   } catch (err) {
     console.error('Error updating SZJA value', err)
@@ -205,25 +259,340 @@ const updateSzjaPriority = async (clientId, highPriority) => {
   }
 }
 
-function NotesInput({ clientId, currentSzja2025, initialValue }) {
+const updateSzjaAssignee = async (clientId, assignedTo) => {
+  try {
+    const ref = doc(db, 'clients', clientId)
+    await updateDoc(ref, {
+      'szja2025.assignedTo': assignedTo,
+    })
+  } catch (err) {
+    console.error('Error updating SZJA assignee', err)
+    alert('Hiba történt a mentés során.')
+  }
+}
+
+const updateSzjaAssignees = async (clientIds, assignedTo) => {
+  try {
+    await Promise.all(
+      clientIds.map((clientId) =>
+        updateDoc(doc(db, 'clients', clientId), {
+          'szja2025.assignedTo': assignedTo,
+        })
+      )
+    )
+  } catch (err) {
+    console.error('Error bulk updating SZJA assignees', err)
+    alert('Hiba történt a mentés során.')
+  }
+}
+
+function NotesTextarea({ clientId, initialValue }) {
   const [val, setVal] = useState(initialValue || '')
+
+  useEffect(() => {
+    setVal(initialValue || '')
+  }, [clientId, initialValue])
 
   const handleBlur = () => {
     if (val !== (initialValue || '')) {
-      toggleSzjaValue(clientId, currentSzja2025, 'megjegyzes', val)
+      toggleSzjaValue(clientId, 'megjegyzes', val)
     }
   }
 
   return (
-    <input
-      type="text"
-      className="input"
+    <textarea
+      className="input szja-notes-input"
       value={val}
-      onChange={(e) => setVal(e.target.value)}
+      onChange={(event) => setVal(event.target.value)}
       onBlur={handleBlur}
       placeholder="Megjegyzés..."
-      style={{ padding: '8px 10px', fontSize: '0.9rem' }}
     />
+  )
+}
+
+function PriorityButton({ active, onClick }) {
+  return (
+    <button
+      type="button"
+      className="btn ghost"
+      onClick={onClick}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        borderColor: active ? '#fecaca' : 'var(--border)',
+        background: active ? '#fef2f2' : '#fff',
+        color: active ? '#b91c1c' : '#475569',
+      }}
+    >
+      <TbFlag size={18} />
+      <span>{active ? 'Magas prioritás' : 'Prioritás'}</span>
+    </button>
+  )
+}
+
+function ChecklistCard({ clientId, checked, fieldKey, label }) {
+  return (
+    <label className="meta-card szja-toggle-card">
+      <span className="meta-label">{label}</span>
+      <div className="szja-toggle-row">
+        <span className={`meta-value${checked ? ' emphasis' : ''}`}>{checked ? 'Kész' : 'Nyitott'}</span>
+        <span className="switch" style={{ display: 'inline-block' }}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(event) => toggleSzjaValue(clientId, fieldKey, event.target.checked)}
+          />
+          <span className="switch-slider"></span>
+        </span>
+      </div>
+    </label>
+  )
+}
+
+function SzjaClientCard({
+  item,
+  selected,
+  selectionMode,
+  isChecked,
+  onSelect,
+  onToggleChecked,
+  onLongPress,
+  onOpenAssignMenu,
+}) {
+  const { client, isException } = item
+  const szja = client.szja2025 || {}
+  const progress = getStepSummary(szja)
+  const notePreview = String(szja.megjegyzes || '').trim()
+  const assigneeLabel = szja.assignedTo || 'Nincs kiosztva'
+  const ipaLabel = getDisplayIpa(client) || 'Nincs megadva'
+  const isHighPriority = Boolean(szja.highPriority)
+  const assigneeAccentClass = getAssigneeAccentClass(szja.assignedTo)
+  const pressTimerRef = useRef(null)
+  const longPressTriggeredRef = useRef(false)
+
+  const startPress = () => {
+    longPressTriggeredRef.current = false
+    if (!onLongPress || selectionMode) return
+    pressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true
+      onLongPress(client.id)
+    }, 500)
+  }
+
+  const endPress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+  }
+
+  useEffect(() => () => endPress(), [])
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`ticket-row clickable szja-client-card${assigneeAccentClass ? ` ${assigneeAccentClass}` : ''}${selected ? ' is-selected' : ''}${isHighPriority ? ' is-priority' : ''}`}
+      onClick={() => {
+        if (longPressTriggeredRef.current) {
+          longPressTriggeredRef.current = false
+          return
+        }
+        onSelect()
+      }}
+      onMouseDown={startPress}
+      onMouseUp={endPress}
+      onMouseLeave={endPress}
+      onTouchStart={startPress}
+      onTouchEnd={endPress}
+      onContextMenu={(event) => {
+        if (!selectionMode || !onOpenAssignMenu) return
+        event.preventDefault()
+        onOpenAssignMenu(event, client.id)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
+    >
+      <div className="ticket-head">
+        <div className="szja-client-head">
+          <div className="szja-client-name-row">
+            {selectionMode ? (
+              <label
+                className="szja-select-checkbox"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleChecked(client.id)}
+                  aria-label={`${client.nev || 'Ügyfél'} kijelölése`}
+                />
+              </label>
+            ) : null}
+            <span className={statusClass(client.statusz)} aria-hidden="true" />
+            <span className="ticket-client">{client.nev || 'Név hiányzik'}</span>
+          </div>
+          <div className="ticket-meta">
+            <span>Adószám: {client.adoszam || '-'}</span>
+            <span>Felelős: {assigneeLabel}</span>
+            <span>IPA: {ipaLabel}</span>
+            <span>Beadva: {szja.bevallasBeadva ? 'Igen' : 'Nem'}</span>
+          </div>
+        </div>
+        <div className="szja-progress-chip">
+          {progress.done}/{progress.total}
+        </div>
+      </div>
+
+      <div className="szja-card-status-row">
+        {isException ? (
+          <span
+            className="pill"
+            style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#fef3c7', color: '#92400e' }}
+          >
+            Kivétel
+          </span>
+        ) : null}
+      </div>
+
+      {notePreview ? <p className="szja-note-preview">{notePreview}</p> : null}
+    </div>
+  )
+}
+
+function SzjaDetailContent({ item, ipaField, assigneeOptions }) {
+  if (!item) {
+    return (
+      <div className="szja-detail-empty">
+        <h3 style={{ marginTop: 0 }}>Válassz ügyfelet</h3>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          A bal oldali listából kiválasztva megnyílik az ügyfél SZJA szerkesztője.
+        </p>
+      </div>
+    )
+  }
+
+  const { client, startDate, pauseStartDate, endDate, isException, exclusionReason } = item
+  const szja = client.szja2025 || {}
+  const progress = getStepSummary(szja)
+  const isHighPriority = Boolean(szja.highPriority)
+
+  return (
+    <div className="details">
+      <div className="details-section">
+        <div className="szja-detail-header">
+          <div className="szja-detail-title">
+            <div className="szja-detail-title-row">
+              <span className={statusClass(client.statusz)} aria-hidden="true" />
+              <h3 style={{ margin: 0 }}>{client.nev || 'Név hiányzik'}</h3>
+              {isException ? (
+                <span
+                  className="pill"
+                  style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#fef3c7', color: '#92400e' }}
+                >
+                  Kivétel
+                </span>
+              ) : null}
+            </div>
+            <div className="ticket-meta">
+              <span>{client.statusz || 'Ismeretlen státusz'}</span>
+              <span>Adószám: {client.adoszam || '-'}</span>
+              <span>Kezdés: {formatDate(startDate)}</span>
+              {pauseStartDate ? <span>Szünet: {formatDate(pauseStartDate)}</span> : null}
+              {endDate ? <span>Megszűnés: {formatDate(endDate)}</span> : null}
+            </div>
+          </div>
+
+          <div className="szja-detail-actions">
+            <PriorityButton active={isHighPriority} onClick={() => updateSzjaPriority(client.id, !isHighPriority)} />
+            {isException ? (
+              <button type="button" className="btn ghost" onClick={() => updateSzjaException(client.id, false)}>
+                Kivétel törlése
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {isException ? (
+          <div className="details-banner warning">
+            Kézzel hozzáadott kivétel{exclusionReason ? `: ${exclusionReason}` : '.'}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="details-section">
+        <div className="details-header">
+          <h3>Összegzés</h3>
+          <span className="muted">{progress.done}/{progress.total} kész</span>
+        </div>
+        <div className="ticket-meta-panel">
+          <div className="meta-card">
+            <span className="meta-label">Státusz</span>
+            <span className="meta-value">{client.statusz || '-'}</span>
+          </div>
+          <div className="meta-card">
+            <span className="meta-label">Adószám</span>
+            <span className="meta-value">{client.adoszam || '-'}</span>
+          </div>
+          <div className="meta-card">
+            <span className="meta-label">IPA</span>
+            <select
+              className="meta-select"
+              value={getDisplayIpa(client)}
+              onChange={(event) => updateIpaValue(client.id, event.target.value)}
+            >
+              <option value="">Nincs megadva</option>
+              {ipaField.options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="meta-card">
+            <span className="meta-label">Felelős</span>
+            <select
+              className="meta-select"
+              value={szja.assignedTo || ''}
+              onChange={(event) => updateSzjaAssignee(client.id, event.target.value)}
+            >
+              <option value="">Nincs kiosztva</option>
+              {assigneeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="details-section">
+        <div className="details-header">
+          <h3>Feladatlépések</h3>
+          <span className="muted">{progress.percent}% kész</span>
+        </div>
+        <div className="szja-checklist-grid">
+          {SZJA_CHECKLIST_FIELDS.map(({ key, label }) => (
+            <ChecklistCard key={key} clientId={client.id} fieldKey={key} label={label} checked={Boolean(szja[key])} />
+          ))}
+        </div>
+      </div>
+
+      <div className="details-section">
+        <div className="details-header">
+          <h3>Megjegyzés</h3>
+          <span className="muted">{String(szja.megjegyzes || '').trim() ? 'Szerkeszthető teljes nézetben' : 'Nincs megjegyzés'}</span>
+        </div>
+        <NotesTextarea clientId={client.id} initialValue={szja.megjegyzes} />
+      </div>
+    </div>
   )
 }
 
@@ -231,25 +600,30 @@ function RuleSection({
   title,
   subtitle,
   items,
-  searchTerm,
-  ipaField,
+  visibleItems,
+  selectedItem,
   headerAction = null,
-  contextMenu = { clientId: '', x: 0, y: 0 },
-  onClientContextMenu = () => {},
-  onPriorityToggle = () => {},
+  selectionMode,
+  onSelectClient,
+  selectedClientIds,
+  onToggleChecked,
+  onToggleSelectAllVisible,
+  onClearSelection,
+  onClientLongPress,
+  onOpenAssignMenu,
 }) {
-  // A custom grid to securely fit all columns without auto-wrapping or side-scrolling
-  const gridTemplate = 'minmax(200px, 1.2fr) repeat(6, 85px) 110px minmax(140px, 1fr)'
-
-  const visibleItems = useMemo(() => {
-    if (!searchTerm) return items
-    const term = searchTerm.toLowerCase()
-    return items.filter(({ client }) => {
-      const name = (client.nev || '').toLowerCase()
-      const adoszam = (client.adoszam || '').toLowerCase()
-      return name.includes(term) || adoszam.includes(term)
-    })
-  }, [items, searchTerm])
+  const progress = useMemo(() => getProgressSummary(items), [items])
+  const priorityCount = useMemo(
+    () => visibleItems.filter(({ client }) => Boolean(client.szja2025?.highPriority)).length,
+    [visibleItems]
+  )
+  const visibleExceptionCount = useMemo(
+    () => visibleItems.filter(({ isException }) => isException).length,
+    [visibleItems]
+  )
+  const visibleIds = visibleItems.map(({ client }) => client.id)
+  const selectedVisibleCount = visibleIds.filter((id) => selectedClientIds.includes(id)).length
+  const allVisibleSelected = Boolean(visibleIds.length) && selectedVisibleCount === visibleIds.length
 
   return (
     <div style={{ paddingBottom: 16 }}>
@@ -260,220 +634,104 @@ function RuleSection({
           {headerAction}
         </div>
       </div>
+
       <p className="muted" style={{ marginBottom: 20 }}>{subtitle}</p>
 
-      {visibleItems.length ? (
-        <div className="table" style={{ minWidth: 960, overflow: 'visible' }}>
-          <div className="table-head" style={{ gridTemplateColumns: gridTemplate, position: 'sticky', top: 80, zIndex: 10, borderBottom: '1px solid var(--border)'}}>
-            <span>Ügyfél neve és adószáma</span>
-              <span className="text-center" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>SZJA<br/>Elkészítve</span>
-              <span className="text-center" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>SZJA<br/>Beadva</span>
-              <span className="text-center" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>SZJA<br/>Értesítő</span>
-              <span className="text-center" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>SZJA<br/>Számla</span>
-              <span className="text-center" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>IPA<br/>Beadva</span>
-              <span className="text-center" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>IPA<br/>Értesítő</span>
-              <span style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>{ipaField.label}</span>
-              <span>Megjegyzés</span>
-            </div>
-
-            {visibleItems.map((item) => {
-              const { client, isException, exclusionReason } = item
-              const szja = client.szja2025 || {}
-              const isHighPriority = Boolean(szja.highPriority)
-              return (
-                <div className="table-row" style={{ gridTemplateColumns: gridTemplate }} key={client.id}>
-                  <div
-                    data-szja-context-menu="true"
-                    style={{
-                      paddingLeft: 12,
-                      borderLeft: isHighPriority ? '3px solid #dc2626' : '3px solid transparent',
-                      borderRadius: 8,
-                      background: isHighPriority ? 'linear-gradient(90deg, #fff7f7 0%, #ffffff 24%)' : 'transparent',
-                    }}
-                    onContextMenu={(event) => onClientContextMenu(event, client.id)}
-                  >
-                    <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                        <span className={statusClass(client.statusz)} aria-hidden="true" />
-                        <span style={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {client.nev || 'Név hiányzik'}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span className="muted" style={{ fontSize: '0.85rem' }}>
-                          {client.adoszam || '-'}
-                        </span>
-                        {isException ? (
-                          <span
-                            className="pill"
-                            style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#fef3c7', color: '#92400e' }}
-                          >
-                            Kivétel
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {isException ? (
-                        <div className="muted" style={{ fontSize: '0.8rem', lineHeight: 1.35 }}>
-                          Kézzel hozzáadva{exclusionReason ? ` • ${exclusionReason}` : ''}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  
-                  <div className="text-center">
-                    <label className="switch" style={{ display: 'inline-block' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!szja.bevallasElkeszitve}
-                        onChange={(e) => toggleSzjaValue(client.id, szja, 'bevallasElkeszitve', e.target.checked)}
-                      />
-                      <span className="switch-slider"></span>
-                    </label>
-                  </div>
-                  
-                  <div className="text-center">
-                    <label className="switch" style={{ display: 'inline-block' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!szja.bevallasBeadva}
-                        onChange={(e) => toggleSzjaValue(client.id, szja, 'bevallasBeadva', e.target.checked)}
-                      />
-                      <span className="switch-slider"></span>
-                    </label>
-                  </div>
-                  
-                  <div className="text-center">
-                    <label className="switch" style={{ display: 'inline-block' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!szja.szjaErtesitoKikulve}
-                        onChange={(e) => toggleSzjaValue(client.id, szja, 'szjaErtesitoKikulve', e.target.checked)}
-                      />
-                      <span className="switch-slider"></span>
-                    </label>
-                  </div>
-                  
-                  <div className="text-center">
-                    <label className="switch" style={{ display: 'inline-block' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!szja.szjaSzamlaFizetve}
-                        onChange={(e) => toggleSzjaValue(client.id, szja, 'szjaSzamlaFizetve', e.target.checked)}
-                      />
-                      <span className="switch-slider"></span>
-                    </label>
-                  </div>
-                  
-                  <div className="text-center">
-                    <label className="switch" style={{ display: 'inline-block' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!szja.hipaBeadva}
-                        onChange={(e) => toggleSzjaValue(client.id, szja, 'hipaBeadva', e.target.checked)}
-                      />
-                      <span className="switch-slider"></span>
-                    </label>
-                  </div>
-                  
-                  <div className="text-center">
-                    <label className="switch" style={{ display: 'inline-block' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!szja.hipaErtesitoKikulve}
-                        onChange={(e) => toggleSzjaValue(client.id, szja, 'hipaErtesitoKikulve', e.target.checked)}
-                      />
-                      <span className="switch-slider"></span>
-                    </label>
-                  </div>
-                  
-                  <div>
-                    <select
-                      className="input"
-                      value={client.ipa || szja.hipaValasztas || ''}
-                      onChange={(e) => updateIpaValue(client.id, e.target.value)}
-                      style={{ padding: '8px 10px', fontSize: '0.9rem' }}
-                    >
-                      <option value="">Nincs megadva</option>
-                      {ipaField.options.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <NotesInput clientId={client.id} currentSzja2025={szja} initialValue={szja.megjegyzes} />
-                    {isException ? (
-                      <button
-                        type="button"
-                        className="btn ghost"
-                        onClick={() => updateSzjaException(client.id, false)}
-                        style={{ padding: '8px 10px', fontSize: '0.85rem' }}
-                      >
-                        Kivétel törlése
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              )
-            })}
-        </div>
-      ) : (
-        <p className="muted">Nincs találat.</p>
-      )}
-
-      {contextMenu.clientId ? (
-        <div
-          role="menu"
-          data-szja-context-menu="true"
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            padding: 4,
-            background: 'transparent',
-            boxShadow: 'none',
-            zIndex: 30,
-          }}
-        >
-          {(() => {
-            const matched = items.find(({ client }) => client.id === contextMenu.clientId)
-            const isHighPriority = Boolean(matched?.client?.szja2025?.highPriority)
-            return (
-          <button
-            type="button"
-            role="menuitem"
-            className="btn ghost"
-            onClick={() => {
-              const nextValue = !Boolean(matched?.client?.szja2025?.highPriority)
-              onPriorityToggle(contextMenu.clientId, nextValue)
-            }}
-            aria-label="Magas prioritás"
-            title="Magas prioritás"
-            style={{
-              minWidth: 34,
-              width: 34,
-              height: 34,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: `1px solid ${isHighPriority ? '#fca5a5' : '#dbe4f0'}`,
-              background: isHighPriority ? '#fef2f2' : '#f8fafc',
-              color: isHighPriority ? '#dc2626' : '#94a3b8',
-              boxShadow: 'none',
-              borderRadius: 8,
-            }}
-          >
-            <TbFlag size={20} />
-          </button>
-            )
-          })()}
+      {items.length ? (
+        <div className="utalando-progress" style={{ marginBottom: 16 }}>
+          <div className="utalando-progress__row">
+            <span>SZJA beadva: {progress.done}/{progress.total}</span>
+            <span>{progress.percent}%</span>
+          </div>
+          <div className="utalando-progress__bar">
+            <div className="utalando-progress__fill" style={{ width: `${progress.percent}%` }} />
+          </div>
         </div>
       ) : null}
+
+      <div className="szja-summary-line">
+        <span>Látható: {visibleItems.length}</span>
+        <span>Prioritásos: {priorityCount}</span>
+        <span>Kivételek: {visibleExceptionCount}</span>
+        {selectionMode ? <span>Kijelölt: {selectedClientIds.length}</span> : null}
+      </div>
+
+      {selectionMode ? (
+        <div className="szja-bulk-bar">
+          <label className="szja-bulk-select-all">
+            <input type="checkbox" checked={allVisibleSelected} onChange={onToggleSelectAllVisible} />
+            <span className="szja-bulk-select-all__text">
+              {allVisibleSelected ? 'Láthatók kijelölve' : 'Összes kijelölése'}
+            </span>
+          </label>
+          <span className="pill">{selectedClientIds.length} kijelölt</span>
+          <span className="szja-bulk-bar__hint muted">
+            Jobb klikk egy kijelölt ügyfélen a kiosztáshoz.
+          </span>
+          <button type="button" className="btn ghost" onClick={onClearSelection}>
+            Kijelölés törlése
+          </button>
+        </div>
+      ) : null}
+
+      {visibleItems.length ? (
+        <div className="ticket-list szja-list">
+          {visibleItems.map((item) => (
+            <SzjaClientCard
+              key={item.client.id}
+              item={item}
+              selected={selectedItem?.client?.id === item.client.id}
+              selectionMode={selectionMode}
+              isChecked={selectedClientIds.includes(item.client.id)}
+              onToggleChecked={onToggleChecked}
+              onLongPress={onClientLongPress}
+              onOpenAssignMenu={onOpenAssignMenu}
+              onSelect={() => onSelectClient(item.client.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {!visibleItems.length ? <p className="muted">Nincs találat.</p> : null}
+    </div>
+  )
+}
+
+function BulkAssignContextMenu({ open, x, y, assigneeOptions, onAssign, onClose, saving }) {
+  if (!open) return null
+
+  return (
+    <div
+      data-szja-assign-menu="true"
+      style={{
+        position: 'fixed',
+        top: y,
+        left: x,
+        width: 220,
+        padding: 8,
+        borderRadius: 14,
+        border: '1px solid var(--border)',
+        background: '#fff',
+        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.16)',
+        zIndex: 1300,
+        display: 'grid',
+        gap: 6,
+      }}
+    >
+      <div style={{ padding: '4px 6px 8px', fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+        Kiosztás kijelölteknek
+      </div>
+      <button type="button" className="btn ghost" onClick={() => onAssign('')} disabled={saving}>
+        Nincs kiosztva
+      </button>
+      {assigneeOptions.map((option) => (
+        <button key={option} type="button" className="btn ghost" onClick={() => onAssign(option)} disabled={saving}>
+          {option}
+        </button>
+      ))}
+      <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>
+        Mégse
+      </button>
     </div>
   )
 }
@@ -488,17 +746,10 @@ function ExceptionPicker({
   onToggleSelection,
   onAddSelected,
   saving,
+  description,
+  addButtonLabel,
 }) {
-  const visibleItems = useMemo(() => {
-    const term = String(searchTerm || '').trim().toLowerCase()
-    return term
-      ? items.filter(({ client }) => {
-          const name = (client.nev || '').toLowerCase()
-          const adoszam = (client.adoszam || '').toLowerCase()
-          return name.includes(term) || adoszam.includes(term)
-        })
-      : items
-  }, [items, searchTerm])
+  const visibleItems = useMemo(() => getVisibleItems(items, searchTerm), [items, searchTerm])
 
   return (
     <div style={{ position: 'relative' }}>
@@ -535,7 +786,7 @@ function ExceptionPicker({
             <div>
               <h3 style={{ margin: 0 }}>Kivétel hozzáadása</h3>
               <p className="muted" style={{ margin: '6px 0 0' }}>
-                A normál szűrésből kimaradt ügyfelek az aktív listához adhatók.
+                {description}
               </p>
             </div>
             <span className="pill">{items.length} kizárt ügyfél</span>
@@ -548,7 +799,7 @@ function ExceptionPicker({
                 className="input"
                 placeholder="Keresés a kizárt ügyfelek között..."
                 value={searchTerm}
-                onChange={(e) => onSearchChange(e.target.value)}
+                onChange={(event) => onSearchChange(event.target.value)}
               />
               <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
                 {visibleItems.length ? (
@@ -596,7 +847,7 @@ function ExceptionPicker({
                     onClick={onAddSelected}
                     disabled={!selectedIds.length || saving}
                   >
-                    {saving ? 'Hozzáadás...' : 'Hozzáadás az aktív listához'}
+                    {saving ? 'Hozzáadás...' : addButtonLabel}
                   </button>
                 </div>
               </div>
@@ -625,9 +876,10 @@ function handleExportExcel(items, tabTitle) {
     'IPA Beadva',
     'IPA Értesítő kiküldve',
     'IPA',
+    'Felelős',
     'Magas prioritás',
     'Kivétel',
-    'Megjegyzés'
+    'Megjegyzés',
   ]
 
   const rows = items.map(({ client, startDate, pauseStartDate, endDate, isException }) => {
@@ -645,17 +897,18 @@ function handleExportExcel(items, tabTitle) {
       szja.szjaSzamlaFizetve ? 'Igen' : 'Nem',
       szja.hipaBeadva ? 'Igen' : 'Nem',
       szja.hipaErtesitoKikulve ? 'Igen' : 'Nem',
-      client.ipa || szja.hipaValasztas || '',
+      getDisplayIpa(client),
+      szja.assignedTo || '',
       szja.highPriority ? 'Igen' : '',
       isException ? 'Igen' : '',
-      szja.megjegyzes || ''
+      szja.megjegyzes || '',
     ]
   })
 
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, 'SZJA 2025')
-  
+
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   XLSX.writeFile(workbook, `szja-export-${stamp}.xlsx`)
 }
@@ -663,9 +916,16 @@ function handleExportExcel(items, tabTitle) {
 function SzjaTasksPage() {
   const { clients, loading, error } = useClientsCache()
   const { fields } = useClientSchema()
+  const { profiles } = useUserProfile()
   const [activeTab, setActiveTab] = useState('active')
   const [searchTerm, setSearchTerm] = useState('')
-  const [contextMenu, setContextMenu] = useState({ clientId: '', x: 0, y: 0 })
+  const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedClientIds, setSelectedClientIds] = useState([])
+  const [bulkAssignSaving, setBulkAssignSaving] = useState(false)
+  const [assignMenu, setAssignMenu] = useState({ open: false, x: 0, y: 0 })
   const [exceptionPickerOpen, setExceptionPickerOpen] = useState(false)
   const [exceptionSearchTerm, setExceptionSearchTerm] = useState('')
   const [selectedExceptionIds, setSelectedExceptionIds] = useState([])
@@ -675,6 +935,16 @@ function SzjaTasksPage() {
     () => fields.find((field) => field.key === 'ipa') || { label: 'IPA', options: [] },
     [fields]
   )
+
+  const assigneeOptions = useMemo(() => {
+    const profileNames = (profiles || [])
+      .map((entry) => (entry.username || entry.email || '').trim())
+      .filter(Boolean)
+    const assignedNames = clients
+      .map((client) => String(client?.szja2025?.assignedTo || '').trim())
+      .filter(Boolean)
+    return Array.from(new Set([...profileNames, ...assignedNames])).sort((a, b) => a.localeCompare(b, 'hu'))
+  }, [clients, profiles])
 
   const groups = useMemo(() => {
     const activeStartedBy2025 = []
@@ -729,17 +999,150 @@ function SzjaTasksPage() {
 
   const totalMatches = groups.activeStartedBy2025.length + groups.pausedOrTerminated.length
 
+  const activeTabConfig =
+    activeTab === 'active'
+      ? {
+          id: 'active',
+          title: 'Aktív most (vagy 2026-ban szünetelő/megszűnt)',
+          subtitle: 'Kezdés mindenkinél: 2025-ben vagy korábban. Olyanok is itt vannak, akik csak 2026-ban szüneteltették vagy szüntették meg.',
+          items: groups.activeStartedBy2025,
+          headerAction: (
+            <ExceptionPicker
+              open={exceptionPickerOpen}
+              onToggleOpen={() => setExceptionPickerOpen((prev) => !prev)}
+              items={groups.excludedClients}
+              searchTerm={exceptionSearchTerm}
+              onSearchChange={setExceptionSearchTerm}
+              selectedIds={selectedExceptionIds}
+              onToggleSelection={(clientId) =>
+                setSelectedExceptionIds((prev) =>
+                  prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]
+                )
+              }
+              onAddSelected={async () => {
+                if (!selectedExceptionIds.length) return
+                setExceptionSaving(true)
+                try {
+                  await Promise.all(selectedExceptionIds.map((clientId) => updateSzjaException(clientId, true, 'active')))
+                  setSelectedExceptionIds([])
+                  setExceptionSearchTerm('')
+                  setExceptionPickerOpen(false)
+                  setActiveTab('active')
+                } finally {
+                  setExceptionSaving(false)
+                }
+              }}
+              saving={exceptionSaving}
+              description="A normál szűrésből kimaradt ügyfelek az aktív listához adhatók."
+              addButtonLabel="Hozzáadás az aktív listához"
+            />
+          ),
+        }
+      : {
+          id: 'pausedOrEnded',
+          title: 'Szünetel / Megszűnt',
+          subtitle: 'Közös szabály: kezdés 2025-ben vagy korábban. De szünetelt vagy megszűnt 2025 folyamán.',
+          items: groups.pausedOrTerminated,
+          headerAction: (
+            <ExceptionPicker
+              open={exceptionPickerOpen}
+              onToggleOpen={() => setExceptionPickerOpen((prev) => !prev)}
+              items={groups.excludedClients}
+              searchTerm={exceptionSearchTerm}
+              onSearchChange={setExceptionSearchTerm}
+              selectedIds={selectedExceptionIds}
+              onToggleSelection={(clientId) =>
+                setSelectedExceptionIds((prev) =>
+                  prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]
+                )
+              }
+              onAddSelected={async () => {
+                if (!selectedExceptionIds.length) return
+                setExceptionSaving(true)
+                try {
+                  await Promise.all(
+                    selectedExceptionIds.map((clientId) => updateSzjaException(clientId, true, 'pausedOrEnded'))
+                  )
+                  setSelectedExceptionIds([])
+                  setExceptionSearchTerm('')
+                  setExceptionPickerOpen(false)
+                  setActiveTab('pausedOrEnded')
+                } finally {
+                  setExceptionSaving(false)
+                }
+              }}
+              saving={exceptionSaving}
+              description="A normál szűrésből kimaradt ügyfelek a szünetelő/megszűnt listához adhatók."
+              addButtonLabel="Hozzáadás a szünetelő/megszűnt listához"
+            />
+          ),
+        }
+
+  const visibleItems = useMemo(
+    () => getVisibleItems(activeTabConfig.items, searchTerm, assigneeFilter),
+    [activeTabConfig.items, searchTerm, assigneeFilter]
+  )
+
+  const assigneeMatchCount = useMemo(() => {
+    if (!assigneeFilter) return 0
+    const filterValue = assigneeFilter.trim().toLowerCase()
+    return activeTabConfig.items.filter(
+      ({ client }) => String(client.szja2025?.assignedTo || '').trim().toLowerCase() === filterValue
+    ).length
+  }, [activeTabConfig.items, assigneeFilter])
+
+  const selectedItem = useMemo(
+    () => activeTabConfig.items.find(({ client }) => client.id === selectedClientId) || null,
+    [activeTabConfig.items, selectedClientId]
+  )
+
   useEffect(() => {
     const allowedIds = new Set(groups.excludedClients.map(({ client }) => client.id))
     setSelectedExceptionIds((prev) => prev.filter((id) => allowedIds.has(id)))
   }, [groups.excludedClients])
 
   useEffect(() => {
-    if (!contextMenu.clientId) return undefined
+    setExceptionPickerOpen(false)
+    setExceptionSearchTerm('')
+    setSelectedExceptionIds([])
+    setSelectedClientIds([])
+    setSelectionMode(false)
+    setAssignMenu({ open: false, x: 0, y: 0 })
+    setDetailModalOpen(false)
+  }, [activeTab])
 
-    const closeMenu = () => setContextMenu({ clientId: '', x: 0, y: 0 })
+  useEffect(() => {
+    if (!activeTabConfig.items.length) {
+      if (selectedClientId) setSelectedClientId('')
+      setDetailModalOpen(false)
+      return
+    }
+
+    const isSelectedStillVisible = activeTabConfig.items.some(({ client }) => client.id === selectedClientId)
+    if (!isSelectedStillVisible) {
+      setSelectedClientId(activeTabConfig.items[0].client.id)
+      setDetailModalOpen(false)
+    }
+  }, [activeTabConfig.items, selectedClientId])
+
+  useEffect(() => {
+    const allowedIds = new Set(activeTabConfig.items.map(({ client }) => client.id))
+    setSelectedClientIds((prev) => prev.filter((id) => allowedIds.has(id)))
+  }, [activeTabConfig.items])
+
+  useEffect(() => {
+    if (selectionMode && selectedClientIds.length === 0) {
+      setSelectionMode(false)
+      setAssignMenu({ open: false, x: 0, y: 0 })
+    }
+  }, [selectedClientIds, selectionMode])
+
+  useEffect(() => {
+    if (!assignMenu.open) return undefined
+
+    const closeMenu = () => setAssignMenu({ open: false, x: 0, y: 0 })
     const handlePointerDown = (event) => {
-      if (event.target?.closest?.('[data-szja-context-menu="true"]')) return
+      if (event.target?.closest?.('[data-szja-assign-menu="true"]')) return
       closeMenu()
     }
     const handleKeyDown = (event) => {
@@ -755,82 +1158,75 @@ function SzjaTasksPage() {
       document.removeEventListener('scroll', closeMenu, true)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [contextMenu.clientId])
+  }, [assignMenu.open])
 
-  useEffect(() => {
-    const visibleClientIds = new Set([
-      ...groups.activeStartedBy2025.map(({ client }) => client.id),
-      ...groups.pausedOrTerminated.map(({ client }) => client.id),
-    ])
-
-    if (contextMenu.clientId && !visibleClientIds.has(contextMenu.clientId)) {
-      setContextMenu({ clientId: '', x: 0, y: 0 })
-    }
-  }, [contextMenu.clientId, groups.activeStartedBy2025, groups.pausedOrTerminated])
-
-  const handleToggleExceptionSelection = (clientId) => {
-    setSelectedExceptionIds((prev) =>
+  const handleToggleChecked = (clientId) => {
+    setSelectionMode(true)
+    setSelectedClientIds((prev) =>
       prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]
     )
   }
 
-  const handleAddSelectedExceptions = async () => {
-    if (!selectedExceptionIds.length) return
-    setExceptionSaving(true)
-    try {
-      await Promise.all(selectedExceptionIds.map((clientId) => updateSzjaException(clientId, true, 'active')))
-      setSelectedExceptionIds([])
-      setExceptionSearchTerm('')
-      setExceptionPickerOpen(false)
-      setActiveTab('active')
-    } finally {
-      setExceptionSaving(false)
-    }
+  const handleToggleSelectAllVisible = () => {
+    const visibleIds = visibleItems.map(({ client }) => client.id)
+    const allVisibleSelected =
+      visibleIds.length > 0 && visibleIds.every((id) => selectedClientIds.includes(id))
+
+    setSelectedClientIds((prev) => {
+      if (allVisibleSelected) {
+        return prev.filter((id) => !visibleIds.includes(id))
+      }
+      return Array.from(new Set([...prev, ...visibleIds]))
+    })
   }
 
-  const handleClientContextMenu = (event, clientId) => {
-    event.preventDefault()
-    const menuWidth = 44
-    const menuHeight = 44
+  const handleClientLongPress = (clientId) => {
+    setSelectionMode(true)
+    setSelectedClientIds((prev) => (prev.includes(clientId) ? prev : [...prev, clientId]))
+  }
+
+  const handleSelectClient = (clientId) => {
+    if (selectionMode) {
+      handleToggleChecked(clientId)
+      return
+    }
+    setSelectedClientId(clientId)
+    setDetailModalOpen(true)
+  }
+
+  const handleClearSelection = () => {
+    setSelectedClientIds([])
+    setSelectionMode(false)
+    setAssignMenu({ open: false, x: 0, y: 0 })
+  }
+
+  const handleOpenAssignMenu = (event, clientId) => {
+    if (!selectionMode) return
+    const targetSelected = selectedClientIds.includes(clientId)
+    const nextSelectedIds = targetSelected ? selectedClientIds : [...selectedClientIds, clientId]
+    if (!nextSelectedIds.length) return
+
+    if (!targetSelected) {
+      setSelectedClientIds(nextSelectedIds)
+    }
+
+    const menuWidth = 220
+    const menuHeight = Math.min(56 + (assigneeOptions.length + 2) * 42, 360)
     const nextX = Math.min(event.clientX, window.innerWidth - menuWidth - 12)
     const nextY = Math.min(event.clientY, window.innerHeight - menuHeight - 12)
-    setContextMenu({ clientId, x: Math.max(12, nextX), y: Math.max(12, nextY) })
+    setAssignMenu({ open: true, x: Math.max(12, nextX), y: Math.max(12, nextY) })
   }
 
-  const handlePriorityToggle = async (clientId, highPriority) => {
-    await updateSzjaPriority(clientId, highPriority)
-    setContextMenu({ clientId: '', x: 0, y: 0 })
+  const handleAssignSelected = async (assignedTo) => {
+    if (!selectedClientIds.length) return
+    setBulkAssignSaving(true)
+    try {
+      await updateSzjaAssignees(selectedClientIds, assignedTo)
+      setAssignMenu({ open: false, x: 0, y: 0 })
+    } finally {
+      setBulkAssignSaving(false)
+    }
   }
-  
-  const activeTabConfig =
-    activeTab === 'active'
-      ? {
-          id: 'active',
-          title: 'Aktív most (vagy 2026-ban szünetelő/megszűnt)',
-          subtitle: 'Kezdés mindenkinél: 2025-ben vagy korábban. Olyanok is itt vannak, akik csak 2026-ban szüneteltették/szüntették meg.',
-          items: groups.activeStartedBy2025,
-          headerAction: (
-            <ExceptionPicker
-              open={exceptionPickerOpen}
-              onToggleOpen={() => setExceptionPickerOpen((prev) => !prev)}
-              items={groups.excludedClients}
-              searchTerm={exceptionSearchTerm}
-              onSearchChange={setExceptionSearchTerm}
-              selectedIds={selectedExceptionIds}
-              onToggleSelection={handleToggleExceptionSelection}
-              onAddSelected={handleAddSelectedExceptions}
-              saving={exceptionSaving}
-            />
-          ),
-        }
-      : {
-          id: 'pausedOrEnded',
-          title: 'Szünetel / Megszűnt',
-          subtitle:
-            'Közös szabály: kezdés 2025-ben vagy korábban. De szünetelt/megszűnt 2025 folyamán.',
-          items: groups.pausedOrTerminated,
-          headerAction: null,
-        }
 
   return (
     <main className="page-container">
@@ -843,15 +1239,15 @@ function SzjaTasksPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <span className="pill">{loading ? 'Betöltés...' : `${totalMatches} érintett`}</span>
-            {!loading && (
-              <button 
-                className="btn btn-primary" 
+            {!loading ? (
+              <button
+                className="btn btn-primary"
                 onClick={() => handleExportExcel(activeTabConfig.items, activeTabConfig.title)}
                 style={{ alignSelf: 'center' }}
               >
                 Exportálás Excelbe
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
@@ -863,7 +1259,17 @@ function SzjaTasksPage() {
           <p className="muted">Ügyfelek betöltése...</p>
         ) : (
           <>
-            <div className="details-top" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div
+              className="details-top"
+              style={{
+                marginBottom: 24,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 12,
+              }}
+            >
               <div className="details-tabs" role="tablist" aria-label="SZJA csoportok">
                 <button
                   type="button"
@@ -884,16 +1290,49 @@ function SzjaTasksPage() {
                   Szünetelt/Megszűnt 2025-ben ({groups.pausedOrTerminated.length})
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginLeft: 'auto' }}>
-                <input 
-                  type="text" 
-                  className="input search-field" 
-                  placeholder="Keresés név vagy adószám alapján..." 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ maxWidth: 300 }}
+              <div className="szja-toolbar-controls">
+                <select
+                  className="input search-field"
+                  value={assigneeFilter}
+                  onChange={(event) => setAssigneeFilter(event.target.value)}
+                  style={{ width: 220 }}
+                >
+                  <option value="">Összes felelős</option>
+                  {assigneeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  className="input search-field"
+                  placeholder="Keresés név vagy adószám alapján..."
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  style={{ width: 300 }}
                 />
               </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                flexWrap: 'wrap',
+                marginTop: -8,
+                marginBottom: 20,
+                color: '#64748b',
+                fontSize: '0.9rem',
+              }}
+            >
+              <span>Látható ügyfelek: {visibleItems.length}</span>
+              {assigneeFilter ? (
+                <span>
+                  {assigneeFilter}: {assigneeMatchCount} kiosztott ügyfél ebben a listában
+                </span>
+              ) : null}
             </div>
 
             <RuleSection
@@ -901,16 +1340,42 @@ function SzjaTasksPage() {
               title={activeTabConfig.title}
               subtitle={activeTabConfig.subtitle}
               items={activeTabConfig.items}
-              searchTerm={searchTerm}
-              ipaField={ipaField}
+              visibleItems={visibleItems}
+              selectedItem={selectedItem}
               headerAction={activeTabConfig.headerAction}
-              contextMenu={contextMenu}
-              onClientContextMenu={handleClientContextMenu}
-              onPriorityToggle={handlePriorityToggle}
+              selectionMode={selectionMode}
+              onSelectClient={handleSelectClient}
+              selectedClientIds={selectedClientIds}
+              onToggleChecked={handleToggleChecked}
+              onToggleSelectAllVisible={handleToggleSelectAllVisible}
+              onClearSelection={handleClearSelection}
+              onClientLongPress={handleClientLongPress}
+              onOpenAssignMenu={handleOpenAssignMenu}
             />
           </>
         )}
       </section>
+
+      {detailModalOpen && selectedItem ? (
+        <Modal
+          title={selectedItem.client?.nev || 'SZJA részletek'}
+          onClose={() => setDetailModalOpen(false)}
+          className="modal--compact"
+          bodyClassName="szja-modal-body"
+        >
+          <SzjaDetailContent item={selectedItem} ipaField={ipaField} assigneeOptions={assigneeOptions} />
+        </Modal>
+      ) : null}
+
+      <BulkAssignContextMenu
+        open={assignMenu.open}
+        x={assignMenu.x}
+        y={assignMenu.y}
+        assigneeOptions={assigneeOptions}
+        onAssign={handleAssignSelected}
+        onClose={() => setAssignMenu({ open: false, x: 0, y: 0 })}
+        saving={bulkAssignSaving}
+      />
     </main>
   )
 }
