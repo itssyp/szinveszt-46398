@@ -1,17 +1,21 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { TbFlag } from 'react-icons/tb'
-import { doc, updateDoc } from 'firebase/firestore'
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { TbAlertTriangle, TbFlag } from 'react-icons/tb'
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import Modal from '../components/Modal'
+import TicketCreateModal from '../components/TicketCreateModal'
 import { statusClass } from '../components/ClientCards'
 import { db } from '../firebase'
 import { useClientsCache } from '../hooks/useClientsCache'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
+import { useAuth } from '../hooks/useAuth.jsx'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
+import { logClientActivity } from '../utils/clientActivity'
 
 const START_2025 = new Date(2025, 0, 1)
 const START_2025_JAN_2 = new Date(2025, 0, 2)
 const START_2026 = new Date(2026, 0, 1)
+const SZJA_TASK_YEAR = 2025
 const SZJA_CHECKLIST_FIELDS = [
   { key: 'bevallasElkeszitve', label: 'SZJA elkészítve' },
   { key: 'bevallasBeadva', label: 'SZJA beadva' },
@@ -165,16 +169,20 @@ function classifyClientForSzja(client) {
   }
 }
 
-function getVisibleItems(items, searchTerm, assigneeFilter = '') {
+function getVisibleItems(items, searchTerm, assigneeFilter = '', szjaInvoiceFilter = '') {
   const term = String(searchTerm || '').trim().toLowerCase()
   const assigneeTerm = String(assigneeFilter || '').trim().toLowerCase()
+  const invoiceFilter = String(szjaInvoiceFilter || '').trim().toLowerCase()
   return items.filter(({ client }) => {
     const name = String(client.nev || '').toLowerCase()
     const adoszam = String(client.adoszam || '').toLowerCase()
     const assignedTo = String(client.szja2025?.assignedTo || '').trim().toLowerCase()
+    const szjaInvoicePaid = Boolean(client.szja2025?.szjaSzamlaFizetve)
     const matchesAssignee = !assigneeTerm || assignedTo === assigneeTerm
     const matchesSearch = !term || name.includes(term) || adoszam.includes(term)
-    return matchesAssignee && matchesSearch
+    const matchesInvoice =
+      invoiceFilter === '' ? true : invoiceFilter === 'paid' ? szjaInvoicePaid : !szjaInvoicePaid
+    return matchesAssignee && matchesSearch && matchesInvoice
   })
 }
 
@@ -466,7 +474,7 @@ function SzjaClientCard({
   )
 }
 
-function SzjaDetailContent({ item, ipaField, assigneeOptions }) {
+function SzjaDetailContent({ item, ipaField, assigneeOptions, onOpenTaskTicket }) {
   if (!item) {
     return (
       <div className="szja-detail-empty">
@@ -511,6 +519,18 @@ function SzjaDetailContent({ item, ipaField, assigneeOptions }) {
 
           <div className="szja-detail-actions">
             <PriorityButton active={isHighPriority} onClick={() => updateSzjaPriority(client.id, !isHighPriority)} />
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => onOpenTaskTicket?.(client)}
+              style={{
+                borderColor: '#fecaca',
+                background: '#fef2f2',
+                color: '#b91c1c',
+              }}
+            >
+              <TbAlertTriangle />   
+            </button>
             {isException ? (
               <button type="button" className="btn ghost" onClick={() => updateSzjaException(client.id, false)}>
                 Kivétel törlése
@@ -603,6 +623,7 @@ function RuleSection({
   visibleItems,
   selectedItem,
   headerAction = null,
+  controls = null,
   selectionMode,
   onSelectClient,
   selectedClientIds,
@@ -648,6 +669,8 @@ function RuleSection({
           </div>
         </div>
       ) : null}
+
+      {controls}
 
       <div className="szja-summary-line">
         <span>Látható: {visibleItems.length}</span>
@@ -916,10 +939,12 @@ function handleExportExcel(items, tabTitle) {
 function SzjaTasksPage() {
   const { clients, loading, error } = useClientsCache()
   const { fields } = useClientSchema()
-  const { profiles } = useUserProfile()
+  const { user } = useAuth()
+  const { profile, profiles } = useUserProfile()
   const [activeTab, setActiveTab] = useState('active')
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [szjaInvoiceFilter, setSzjaInvoiceFilter] = useState('')
   const [selectedClientId, setSelectedClientId] = useState('')
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [selectionMode, setSelectionMode] = useState(false)
@@ -930,6 +955,13 @@ function SzjaTasksPage() {
   const [exceptionSearchTerm, setExceptionSearchTerm] = useState('')
   const [selectedExceptionIds, setSelectedExceptionIds] = useState([])
   const [exceptionSaving, setExceptionSaving] = useState(false)
+  const [ticketClient, setTicketClient] = useState(null)
+  const [ticketDescription, setTicketDescription] = useState('')
+  const [ticketAssignee, setTicketAssignee] = useState('')
+  const [ticketPriority, setTicketPriority] = useState('medium')
+  const [ticketDueDate, setTicketDueDate] = useState('')
+  const [ticketSaving, setTicketSaving] = useState(false)
+  const [ticketError, setTicketError] = useState('')
 
   const ipaField = useMemo(
     () => fields.find((field) => field.key === 'ipa') || { label: 'IPA', options: [] },
@@ -945,6 +977,13 @@ function SzjaTasksPage() {
       .filter(Boolean)
     return Array.from(new Set([...profileNames, ...assignedNames])).sort((a, b) => a.localeCompare(b, 'hu'))
   }, [clients, profiles])
+
+  const actorName = useMemo(() => {
+    if (profile?.username) return profile.username
+    if (user?.displayName) return user.displayName
+    if (user?.email) return user.email.split('@')[0]
+    return 'Ismeretlen'
+  }, [profile, user])
 
   const groups = useMemo(() => {
     const activeStartedBy2025 = []
@@ -1079,8 +1118,8 @@ function SzjaTasksPage() {
         }
 
   const visibleItems = useMemo(
-    () => getVisibleItems(activeTabConfig.items, searchTerm, assigneeFilter),
-    [activeTabConfig.items, searchTerm, assigneeFilter]
+    () => getVisibleItems(activeTabConfig.items, searchTerm, assigneeFilter, szjaInvoiceFilter),
+    [activeTabConfig.items, searchTerm, assigneeFilter, szjaInvoiceFilter]
   )
 
   const assigneeMatchCount = useMemo(() => {
@@ -1090,6 +1129,97 @@ function SzjaTasksPage() {
       ({ client }) => String(client.szja2025?.assignedTo || '').trim().toLowerCase() === filterValue
     ).length
   }, [activeTabConfig.items, assigneeFilter])
+  const hasActiveFilters = Boolean(assigneeFilter || szjaInvoiceFilter || searchTerm.trim())
+  const szjaInvoiceFilterLabel =
+    szjaInvoiceFilter === 'paid' ? 'Fizetve' : szjaInvoiceFilter === 'unpaid' ? 'Nincs fizetve' : ''
+  const tabsControls = (
+    <div className="szja-controls-shell">
+      <div className="szja-tabs-row">
+        <div className="details-tabs" role="tablist" aria-label="SZJA csoportok">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'active'}
+            className={`details-tab${activeTab === 'active' ? ' active' : ''}`}
+            onClick={() => setActiveTab('active')}
+          >
+            Aktív 2025-ben ({groups.activeStartedBy2025.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'pausedOrEnded'}
+            className={`details-tab${activeTab === 'pausedOrEnded' ? ' active' : ''}`}
+            onClick={() => setActiveTab('pausedOrEnded')}
+          >
+            Szünetelt/Megszűnt 2025-ben ({groups.pausedOrTerminated.length})
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+  const sectionControls = (
+    <div className="szja-controls-shell">
+      <div className="szja-toolbar-controls" aria-label="SZJA szűrők">
+        <label className="szja-toolbar-field">
+          <span className="szja-toolbar-label">Felelős</span>
+          <select className="input search-field" value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}>
+            <option value="">Összes felelős</option>
+            {assigneeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="szja-toolbar-field">
+          <span className="szja-toolbar-label">SZJA számla</span>
+          <select className="input search-field" value={szjaInvoiceFilter} onChange={(event) => setSzjaInvoiceFilter(event.target.value)}>
+            <option value="">Mind</option>
+            <option value="paid">Fizetve</option>
+            <option value="unpaid">Nincs fizetve</option>
+          </select>
+        </label>
+
+        <label className="szja-toolbar-field szja-toolbar-field--search">
+          <span className="szja-toolbar-label">Keresés</span>
+          <input
+            type="text"
+            className="input search-field"
+            placeholder="Név vagy adószám..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </label>
+
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            className="btn ghost szja-clear-filters"
+            onClick={() => {
+              setAssigneeFilter('')
+              setSzjaInvoiceFilter('')
+              setSearchTerm('')
+            }}
+          >
+            Szűrők törlése
+          </button>
+        ) : null}
+      </div>
+
+      {hasActiveFilters ? (
+        <div className="szja-summary-line">
+          {assigneeFilter ? <span className="szja-filter-pill">Felelős: {assigneeFilter}</span> : null}
+          {szjaInvoiceFilterLabel ? <span className="szja-filter-pill">SZJA számla: {szjaInvoiceFilterLabel}</span> : null}
+          {searchTerm.trim() ? <span className="szja-filter-pill">Keresés: {searchTerm.trim()}</span> : null}
+          {assigneeFilter ? (
+            <span className="szja-filter-meta">{assigneeMatchCount} ügyfél van ehhez a felelőshöz ebben a listában</span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 
   const selectedItem = useMemo(
     () => activeTabConfig.items.find(({ client }) => client.id === selectedClientId) || null,
@@ -1228,6 +1358,60 @@ function SzjaTasksPage() {
     }
   }
 
+  const handleOpenTaskTicket = (client) => {
+    if (!client) return
+    setTicketClient(client)
+    setTicketDescription('')
+    setTicketAssignee(actorName || '')
+    setTicketPriority('medium')
+    setTicketDueDate('')
+    setTicketError('')
+  }
+
+  const handleCreateTaskTicket = async () => {
+    if (!ticketClient) return
+    if (!ticketDescription.trim() || !ticketAssignee) {
+      setTicketError('Add meg a leírást és a felelőst.')
+      return
+    }
+
+    try {
+      setTicketSaving(true)
+      setTicketError('')
+      const ref = await addDoc(collection(db, 'tickets'), {
+        clientId: ticketClient.id,
+        clientName: ticketClient.nev || 'Ismeretlen ügyfél',
+        description: ticketDescription.trim(),
+        status: 'Nyitott',
+        createdBy: actorName || 'Ismeretlen',
+        assignedTo: ticketAssignee,
+        priority: ticketPriority || 'medium',
+        dueDate: ticketDueDate || '',
+        taskContext: {
+          type: 'szja',
+          year: SZJA_TASK_YEAR,
+        },
+        resolved: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedBy: actorName || 'Ismeretlen',
+        comments: [],
+      })
+      await logClientActivity({
+        clientId: ticketClient.id,
+        type: 'ticket_created',
+        message: `Ticket: ${ticketDescription.trim().slice(0, 80)}`,
+        meta: { ticketId: ref.id, assignedTo: ticketAssignee, taskType: 'szja', year: SZJA_TASK_YEAR },
+        actor: actorName || 'Ismeretlen',
+      })
+      setTicketClient(null)
+    } catch (err) {
+      setTicketError(err?.message || 'Ticket létrehozása sikertelen')
+    } finally {
+      setTicketSaving(false)
+    }
+  }
+
   return (
     <main className="page-container">
       <header className="section-header tasks-hero">
@@ -1259,81 +1443,7 @@ function SzjaTasksPage() {
           <p className="muted">Ügyfelek betöltése...</p>
         ) : (
           <>
-            <div
-              className="details-top"
-              style={{
-                marginBottom: 24,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 12,
-              }}
-            >
-              <div className="details-tabs" role="tablist" aria-label="SZJA csoportok">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === 'active'}
-                  className={`details-tab${activeTab === 'active' ? ' active' : ''}`}
-                  onClick={() => setActiveTab('active')}
-                >
-                  Aktív 2025-ben ({groups.activeStartedBy2025.length})
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === 'pausedOrEnded'}
-                  className={`details-tab${activeTab === 'pausedOrEnded' ? ' active' : ''}`}
-                  onClick={() => setActiveTab('pausedOrEnded')}
-                >
-                  Szünetelt/Megszűnt 2025-ben ({groups.pausedOrTerminated.length})
-                </button>
-              </div>
-              <div className="szja-toolbar-controls">
-                <select
-                  className="input search-field"
-                  value={assigneeFilter}
-                  onChange={(event) => setAssigneeFilter(event.target.value)}
-                  style={{ width: 220 }}
-                >
-                  <option value="">Összes felelős</option>
-                  {assigneeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  className="input search-field"
-                  placeholder="Keresés név vagy adószám alapján..."
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  style={{ width: 300 }}
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                flexWrap: 'wrap',
-                marginTop: -8,
-                marginBottom: 20,
-                color: '#64748b',
-                fontSize: '0.9rem',
-              }}
-            >
-              <span>Látható ügyfelek: {visibleItems.length}</span>
-              {assigneeFilter ? (
-                <span>
-                  {assigneeFilter}: {assigneeMatchCount} kiosztott ügyfél ebben a listában
-                </span>
-              ) : null}
-            </div>
+            {tabsControls}
 
             <RuleSection
               key={activeTabConfig.id}
@@ -1343,6 +1453,7 @@ function SzjaTasksPage() {
               visibleItems={visibleItems}
               selectedItem={selectedItem}
               headerAction={activeTabConfig.headerAction}
+              controls={sectionControls}
               selectionMode={selectionMode}
               onSelectClient={handleSelectClient}
               selectedClientIds={selectedClientIds}
@@ -1363,8 +1474,33 @@ function SzjaTasksPage() {
           className="modal--compact"
           bodyClassName="szja-modal-body"
         >
-          <SzjaDetailContent item={selectedItem} ipaField={ipaField} assigneeOptions={assigneeOptions} />
+          <SzjaDetailContent
+            item={selectedItem}
+            ipaField={ipaField}
+            assigneeOptions={assigneeOptions}
+            onOpenTaskTicket={handleOpenTaskTicket}
+          />
         </Modal>
+      ) : null}
+
+      {ticketClient ? (
+        <TicketCreateModal
+          client={ticketClient}
+          description={ticketDescription}
+          onChangeDescription={setTicketDescription}
+          assignedTo={ticketAssignee}
+          onChangeAssignedTo={setTicketAssignee}
+          priority={ticketPriority}
+          onChangePriority={setTicketPriority}
+          dueDate={ticketDueDate}
+          onChangeDueDate={setTicketDueDate}
+          currentUser={actorName}
+          assigneeOptions={assigneeOptions}
+          saving={ticketSaving}
+          error={ticketError}
+          onCancel={() => setTicketClient(null)}
+          onSubmit={handleCreateTaskTicket}
+        />
       ) : null}
 
       <BulkAssignContextMenu

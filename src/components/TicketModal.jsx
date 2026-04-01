@@ -20,8 +20,14 @@ function formatDueLabel(dueDate) {
 }
 
 function formatTaskLinkLabel(taskContext) {
-  if (!taskContext || taskContext.type !== 'utalando') return ''
-  return t('tickets.taskUtalandoForMonth', { monthKey: taskContext.monthKey || '' })
+  if (!taskContext || !taskContext.type) return ''
+  if (taskContext.type === 'utalando') {
+    return t('tickets.taskUtalandoForMonth', { monthKey: taskContext.monthKey || '' })
+  }
+  if (taskContext.type === 'szja') {
+    return t('tickets.taskSzjaForYear', { year: taskContext.year || '' })
+  }
+  return ''
 }
 
 function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {

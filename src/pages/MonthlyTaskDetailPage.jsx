@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { TbAlertCircle, TbAlertTriangle, TbCircleCheck, TbPlus } from 'react-icons/tb'
+import { TbAlertCircle, TbAlertTriangle, TbChevronDown, TbChevronUp, TbCircleCheck, TbPlus } from 'react-icons/tb'
 import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useClientsCache } from '../hooks/useClientsCache'
 import useCollectionSubscription from '../hooks/useCollectionSubscription'
@@ -88,6 +88,29 @@ function hasBlockingDebtForMonth(client, nextMonthStartIso) {
   return earliestDueDate < nextMonthStartIso
 }
 
+function normalizeUtalandoFrequency(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+}
+
+function isMonthlyUtalandoFrequency(value) {
+  const raw = normalizeUtalandoFrequency(value)
+  return raw === 'havi' || raw === 'havonta' || raw === 'monthly'
+}
+
+function formatDebtAmount(value) {
+  const amount = Number(value || 0)
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  const hasFraction = Math.round(amount) !== amount
+  return `${amount.toLocaleString('hu-HU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: hasFraction ? 2 : 0,
+  })} Ft`
+}
+
 const TASK_DEFINITIONS = [
   {
     id: 'utalando',
@@ -109,12 +132,14 @@ function MonthlyTaskDetailPage() {
   const [updateError, setUpdateError] = useState('')
   const [notifiedMap, setNotifiedMap] = useState({})
   const [nullasMap, setNullasMap] = useState({})
+  const [beadas58Map, setBeadas58Map] = useState({})
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [nullasFilter, setNullasFilter] = useState('')
   const [taskIds, setTaskIds] = useState([])
   const [taskCatalogOpen, setTaskCatalogOpen] = useState(false)
+  const [showDebtExcluded, setShowDebtExcluded] = useState(false)
   const [savingTasks, setSavingTasks] = useState(false)
   const [ticketClient, setTicketClient] = useState(null)
   const [ticketDescription, setTicketDescription] = useState('')
@@ -148,21 +173,25 @@ function MonthlyTaskDetailPage() {
   const liveUtalandoClients = useMemo(() => {
     if (!isUtalandoEnabled) return []
 
-    const isMonthlyFrequency = (value) => {
-      const raw = String(value || '')
-        .normalize('NFD')
-        .replace(/\p{Diacritic}/gu, '')
-        .toLowerCase()
-        .trim()
-      return raw === 'havi' || raw === 'havonta' || raw === 'monthly'
-    }
-
     return clients
       .filter((client) => {
         if (hasBlockingDebtForMonth(client, nextMonthStartIso)) return false
         if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
         if (isQuarterMonth) return true
-        return isMonthlyFrequency(client.utalandoGyakorisag)
+        return isMonthlyUtalandoFrequency(client.utalandoGyakorisag)
+      })
+      .sort((a, b) => (a.nev || '').localeCompare(b.nev || '', 'hu'))
+  }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey])
+
+  const debtExcludedUtalandoClients = useMemo(() => {
+    if (!isUtalandoEnabled) return []
+
+    return clients
+      .filter((client) => {
+        if (!hasBlockingDebtForMonth(client, nextMonthStartIso)) return false
+        if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
+        if (isQuarterMonth) return true
+        return isMonthlyUtalandoFrequency(client.utalandoGyakorisag)
       })
       .sort((a, b) => (a.nev || '').localeCompare(b.nev || '', 'hu'))
   }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey])
@@ -223,6 +252,7 @@ function MonthlyTaskDetailPage() {
     nullasFilter,
     notifiedMap,
     nullasMap,
+    beadas58Map,
   ])
 
   const openUtalandoTicketByClient = useMemo(() => {
@@ -250,6 +280,14 @@ function MonthlyTaskDetailPage() {
     const percent = Math.round((done / total) * 100)
     return { total, done, percent }
   }, [utalandoClients, notifiedMap, nullasMap])
+
+  const beadas58Progress = useMemo(() => {
+    const total = utalandoClients.length
+    if (!total || !isQuarterMonth) return { total: 0, done: 0, percent: 0 }
+    const done = utalandoClients.filter((client) => Boolean(beadas58Map[client.id])).length
+    const percent = Math.round((done / total) * 100)
+    return { total, done, percent }
+  }, [utalandoClients, isQuarterMonth, beadas58Map])
 
   useEffect(() => {
     const monthRef = doc(db, 'monthTasks', notificationKey)
@@ -280,6 +318,7 @@ function MonthlyTaskDetailPage() {
     if (!isUtalandoEnabled) {
       setNotifiedMap({})
       setNullasMap({})
+      setBeadas58Map({})
       return
     }
 
@@ -287,13 +326,16 @@ function MonthlyTaskDetailPage() {
     const unsubNotified = onSnapshot(notifiedRef, (snap) => {
       const next = {}
       const nextNullas = {}
+      const next58 = {}
       snap.forEach((docSnap) => {
         const data = docSnap.data()
         next[docSnap.id] = Boolean(data?.notified)
         nextNullas[docSnap.id] = Boolean(data?.nullas)
+        next58[docSnap.id] = Boolean(data?.beadas58)
       })
       setNotifiedMap(next)
       setNullasMap(nextNullas)
+      setBeadas58Map(next58)
     })
 
     return () => {
@@ -342,6 +384,29 @@ function MonthlyTaskDetailPage() {
       )
     } catch (err) {
       setUpdateError(err?.message || t('tasks.detail.errors.nullasSave'))
+    } finally {
+      setUpdatingId('')
+    }
+  }
+
+  const handle58BeadvaToggle = async (clientId, nextValue) => {
+    if (nextValue && openUtalandoTicketByClient[clientId]) {
+      setUpdateError(t('tasks.detail.errors.openTicketBlocksCompletion'))
+      return
+    }
+    setUpdateError('')
+    setUpdatingId(clientId)
+    try {
+      await setDoc(
+        doc(db, 'monthTasks', notificationKey, 'utalando', clientId),
+        {
+          beadas58: nextValue,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    } catch (err) {
+      setUpdateError(err?.message || t('tasks.detail.errors.beadas58Save'))
     } finally {
       setUpdatingId('')
     }
@@ -532,6 +597,16 @@ function MonthlyTaskDetailPage() {
             <button type="button" className="btn ghost" onClick={handleCloseToggle}>
               {isClosed ? t('tasks.detail.openMonth') : t('tasks.detail.closeMonth')}
             </button>
+            {isUtalandoEnabled ? (
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={handleExportUtalando}
+                disabled={loading || !filteredUtalandoClients.length}
+              >
+                Excel export ({filteredUtalandoClients.length})
+              </button>
+            ) : null}
             <span className="pill pill-quiet">
               {taskIds.length} {t('tasks.detail.tasksCount')}
             </span>
@@ -592,29 +667,41 @@ function MonthlyTaskDetailPage() {
             ) : null}
 
             {!loading && utalandoClients.length ? (
-              <div className="utalando-progress">
-                <div className="utalando-progress__row">
-                  <span>
-                    {t('tasks.detail.progressSent')}: {utalandoProgress.done}/{utalandoProgress.total}
-                  </span>
-                  <span>{utalandoProgress.percent}%</span>
+              <div className="utalando-progress-grid">
+                <div className="utalando-progress">
+                  <div className="utalando-progress__row">
+                    <div className="utalando-progress__copy">
+                      <span className="utalando-progress__eyebrow">{t('tasks.detail.progressSent')}</span>
+                      <span className="utalando-progress__value">
+                        {utalandoProgress.done}/{utalandoProgress.total}
+                      </span>
+                    </div>
+                    <span className="utalando-progress__percent">{utalandoProgress.percent}%</span>
+                  </div>
+                  <div className="utalando-progress__bar">
+                    <div className="utalando-progress__fill" style={{ width: `${utalandoProgress.percent}%` }} />
+                  </div>
                 </div>
-                <div className="utalando-progress__bar">
-                  <div className="utalando-progress__fill" style={{ width: `${utalandoProgress.percent}%` }} />
-                </div>
-              </div>
-            ) : null}
 
-            {!loading && utalandoClients.length ? (
-              <div className="section-actions">
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={handleExportUtalando}
-                  disabled={!filteredUtalandoClients.length}
-                >
-                  Excel export ({filteredUtalandoClients.length})
-                </button>
+                {isQuarterMonth ? (
+                  <div className="utalando-progress utalando-progress--58">
+                    <div className="utalando-progress__row">
+                      <div className="utalando-progress__copy">
+                        <span className="utalando-progress__eyebrow">{t('tasks.detail.progress58')}</span>
+                        <span className="utalando-progress__value">
+                          {beadas58Progress.done}/{beadas58Progress.total}
+                        </span>
+                      </div>
+                      <span className="utalando-progress__percent">{beadas58Progress.percent}%</span>
+                    </div>
+                    <div className="utalando-progress__bar">
+                      <div
+                        className="utalando-progress__fill utalando-progress__fill--58"
+                        style={{ width: `${beadas58Progress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -655,6 +742,73 @@ function MonthlyTaskDetailPage() {
                     <option value="no">{t('tasks.detail.nonNullas')}</option>
                   </select>
                 </label>
+                {debtExcludedUtalandoClients.length ? (
+                  <button
+                    type="button"
+                    className={`utalando-disclosure-toggle utalando-filters__toggle${showDebtExcluded ? ' is-active' : ''}`}
+                    onClick={() => setShowDebtExcluded((prev) => !prev)}
+                    aria-expanded={showDebtExcluded}
+                  >
+                    {showDebtExcluded ? <TbChevronUp aria-hidden="true" /> : <TbChevronDown aria-hidden="true" />}
+                    <span>
+                      {showDebtExcluded
+                        ? t('tasks.detail.hideDebtExcluded')
+                        : t('tasks.detail.showDebtExcluded', { count: debtExcludedUtalandoClients.length })}
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!loading && debtExcludedUtalandoClients.length && showDebtExcluded ? (
+              <div className="utalando-disclosure">
+                <div className="utalando-disclosure__head">
+                  <div>
+                    <h3>{t('tasks.detail.debtExcludedTitle', { count: debtExcludedUtalandoClients.length })}</h3>
+                    <p className="muted">{t('tasks.detail.debtExcludedHelp')}</p>
+                  </div>
+                </div>
+                <div className="ticket-list">
+                  {debtExcludedUtalandoClients.map((client) => {
+                    const debtAmount = formatDebtAmount(client.billingoDebt)
+                    const earliestDueDate = normalizeIsoDate(client.billingoDebtEarliestDueDate)
+                    return (
+                      <div
+                        key={`debt-excluded-${client.id}`}
+                        className="ticket-row debt-row clickable"
+                        onClick={() => handleOpenClientDetails(client)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            handleOpenClientDetails(client)
+                          }
+                        }}
+                      >
+                        <div className="ticket-head">
+                          <div className="ticket-client">{client.nev || t('tasks.detail.unknownClient')}</div>
+                        </div>
+                        <div className="ticket-meta">
+                          {client.adoszam ? (
+                            <span>
+                              {t('tasks.detail.taxPrefix')} {client.adoszam}
+                            </span>
+                          ) : null}
+                          {debtAmount ? (
+                            <span>
+                              {t('tasks.detail.debtAmountPrefix')} {debtAmount}
+                            </span>
+                          ) : null}
+                          <span>
+                            {t('tasks.detail.debtDuePrefix')}{' '}
+                            {earliestDueDate || t('tasks.detail.debtDueUnknown')}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             ) : null}
 
@@ -667,6 +821,7 @@ function MonthlyTaskDetailPage() {
                 {filteredUtalandoClients.map((client) => {
                   const notified = Boolean(notifiedMap[client.id])
                   const nullas = Boolean(nullasMap[client.id])
+                  const beadva58 = Boolean(beadas58Map[client.id])
                   const openTaskTicket = openUtalandoTicketByClient[client.id]
                   const frequency = client.utalandoGyakorisag || t('tasks.detail.noFrequency')
                   const accent = assigneeColors[(client.hozzarendeltSzemely || '').trim().toLowerCase()]
@@ -765,6 +920,22 @@ function MonthlyTaskDetailPage() {
                         <span className={`pill ${nullas ? 'pill-active' : 'pill-quiet'}`}>
                           {nullas ? t('tasks.detail.nullas') : t('tasks.detail.nonNullas')}
                         </span>
+                        {isQuarterMonth ? (
+                          <>
+                            <label className="switch utalando-switch">
+                              <input
+                                type="checkbox"
+                                checked={beadva58}
+                                onChange={(event) => handle58BeadvaToggle(client.id, event.target.checked)}
+                                disabled={updatingId === client.id || (Boolean(openTaskTicket) && !beadva58)}
+                              />
+                              <span className="switch-slider" />
+                            </label>
+                            <span className={`pill ${beadva58 ? 'pill-active' : 'pill-quiet'}`}>
+                              {beadva58 ? t('tasks.detail.beadva58') : t('tasks.detail.notBeadva58')}
+                            </span>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                   )

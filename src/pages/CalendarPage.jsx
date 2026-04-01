@@ -196,6 +196,10 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
                     <span className="ticket-task-link">
                       {t('tickets.taskLinkPrefix')} {t('tickets.taskUtalandoForMonth', { monthKey: ticket.taskContext.monthKey || '' })}
                     </span>
+                  ) : ticket.taskContext?.type === 'szja' ? (
+                    <span className="ticket-task-link">
+                      {t('tickets.taskLinkPrefix')} {t('tickets.taskSzjaForYear', { year: ticket.taskContext.year || '' })}
+                    </span>
                   ) : null}
                 </div>
               </div>

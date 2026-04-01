@@ -36,17 +36,28 @@ const getDueMeta = (dueDate) => {
 }
 
 const getTaskLinkMeta = (taskContext) => {
-  if (!taskContext || taskContext.type !== 'utalando') return null
-  const monthKey = taskContext.monthKey || ''
-  return {
-    label: t('tickets.taskUtalandoForMonth', { monthKey }),
-    className: 'ticket-task-link',
+  if (!taskContext || !taskContext.type) return null
+  if (taskContext.type === 'utalando') {
+    const monthKey = taskContext.monthKey || ''
+    return {
+      label: t('tickets.taskUtalandoForMonth', { monthKey }),
+      className: 'ticket-task-link',
+    }
   }
+  if (taskContext.type === 'szja') {
+    return {
+      label: t('tickets.taskSzjaForYear', { year: taskContext.year || '' }),
+      className: 'ticket-task-link',
+    }
+  }
+  return null
 }
 
 const getTaskFilterValue = (taskContext) => {
   if (!taskContext || !taskContext.type) return ''
-  return `${taskContext.type}:${taskContext.monthKey || ''}`
+  if (taskContext.type === 'utalando') return `${taskContext.type}:${taskContext.monthKey || ''}`
+  if (taskContext.type === 'szja') return `${taskContext.type}:${taskContext.year || ''}`
+  return taskContext.type
 }
 
 function TicketsPage({ currentUser }) {
