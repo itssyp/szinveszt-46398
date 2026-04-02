@@ -92,6 +92,7 @@ function normalizeUtalandoFrequency(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z]/gi, '')
     .toLowerCase()
     .trim()
 }
@@ -99,6 +100,51 @@ function normalizeUtalandoFrequency(value) {
 function isMonthlyUtalandoFrequency(value) {
   const raw = normalizeUtalandoFrequency(value)
   return raw === 'havi' || raw === 'havonta' || raw === 'monthly'
+}
+
+function normalizeClientStatus(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z]/gi, '')
+    .toLowerCase()
+    .trim()
+}
+
+function getQuarterStartIso(year, monthValue) {
+  const yearNum = Number(year)
+  const quarterEndMonthIndex = Number(monthValue) - 1
+  const quarterStartDate = new Date(yearNum, quarterEndMonthIndex - 2, 1)
+  const isoYear = quarterStartDate.getFullYear()
+  const isoMonth = String(quarterStartDate.getMonth() + 1).padStart(2, '0')
+  const isoDay = String(quarterStartDate.getDate()).padStart(2, '0')
+  return `${isoYear}-${isoMonth}-${isoDay}`
+}
+
+function isDateWithinRange(value, startIso, endIsoExclusive) {
+  const iso = normalizeIsoDate(value)
+  return Boolean(iso && iso >= startIso && iso < endIsoExclusive)
+}
+
+function isQuarterMonthUtalandoClient(client, notificationKey, quarterStartIso, nextMonthStartIso) {
+  if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
+
+  const statusNorm = normalizeClientStatus(client.statusz)
+  if (statusNorm.startsWith('aktiv')) return true
+
+  if (statusNorm.startsWith('szunet')) {
+    return isDateWithinRange(client.szunetKezdete, quarterStartIso, nextMonthStartIso)
+  }
+
+  return false
+}
+
+function isUtalandoClientEligible(client, { isQuarterMonth, notificationKey, quarterStartIso, nextMonthStartIso }) {
+  if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
+  if (isQuarterMonth) {
+    return isQuarterMonthUtalandoClient(client, notificationKey, quarterStartIso, nextMonthStartIso)
+  }
+  return isMonthlyUtalandoFrequency(client.utalandoGyakorisag)
 }
 
 function formatDebtAmount(value) {
@@ -154,6 +200,10 @@ function MonthlyTaskDetailPage() {
   const normalizedMonth = String(month).padStart(2, '0')
   const notificationKey = `${year}-${normalizedMonth}`
   const nextMonthStartIso = useMemo(() => getNextMonthStartIso(year, normalizedMonth), [year, normalizedMonth])
+  const quarterStartIso = useMemo(
+    () => getQuarterStartIso(year, normalizedMonth),
+    [year, normalizedMonth]
+  )
   const [isClosed, setIsClosed] = useState(false)
   const [lockedUtalandoClientIds, setLockedUtalandoClientIds] = useState(null)
   const isUtalandoEnabled = taskIds.includes('utalando')
@@ -176,12 +226,15 @@ function MonthlyTaskDetailPage() {
     return clients
       .filter((client) => {
         if (hasBlockingDebtForMonth(client, nextMonthStartIso)) return false
-        if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
-        if (isQuarterMonth) return true
-        return isMonthlyUtalandoFrequency(client.utalandoGyakorisag)
+        return isUtalandoClientEligible(client, {
+          isQuarterMonth,
+          notificationKey,
+          quarterStartIso,
+          nextMonthStartIso,
+        })
       })
       .sort((a, b) => (a.nev || '').localeCompare(b.nev || '', 'hu'))
-  }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey])
+  }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey, quarterStartIso])
 
   const debtExcludedUtalandoClients = useMemo(() => {
     if (!isUtalandoEnabled) return []
@@ -189,12 +242,15 @@ function MonthlyTaskDetailPage() {
     return clients
       .filter((client) => {
         if (!hasBlockingDebtForMonth(client, nextMonthStartIso)) return false
-        if (isDateInMonth(client.megszunesDatuma, notificationKey)) return true
-        if (isQuarterMonth) return true
-        return isMonthlyUtalandoFrequency(client.utalandoGyakorisag)
+        return isUtalandoClientEligible(client, {
+          isQuarterMonth,
+          notificationKey,
+          quarterStartIso,
+          nextMonthStartIso,
+        })
       })
       .sort((a, b) => (a.nev || '').localeCompare(b.nev || '', 'hu'))
-  }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey])
+  }, [clients, isUtalandoEnabled, isQuarterMonth, nextMonthStartIso, notificationKey, quarterStartIso])
 
   const utalandoClients = useMemo(() => {
     if (!isUtalandoEnabled) return []
