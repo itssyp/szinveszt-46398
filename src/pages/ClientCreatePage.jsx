@@ -7,6 +7,7 @@ import { useClientsCache } from '../hooks/useClientsCache'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { buildExistingIdSet } from '../features/clients/utils/clientDates'
 import { normalizeNumericId } from '../utils/id'
+import { buildClientIpaCreateFields } from '../utils/clientIpa'
 import { db } from '../firebase'
 
 const CLIENT_STATUS_OPTIONS = ['akt\u00edv', 'lemondta/ kir\u00fagva', 'megsz\u0171nt', 'sz\u00fcnet']
@@ -89,7 +90,10 @@ function ClientCreatePage() {
         throw new Error('Már létezik ügyfél ezzel az adóazonosítóval.')
       }
 
-      await addDoc(collection(db, 'clients'), formData)
+      await addDoc(collection(db, 'clients'), {
+        ...formData,
+        ...buildClientIpaCreateFields(formData.ipa, formData.szja2025),
+      })
       setStatus('Új ügyfél rögzítve.')
       if (emptyClientTemplate) {
         setFormData(emptyClientTemplate)

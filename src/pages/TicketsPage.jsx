@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { addDoc, collection, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import { collection, orderBy, query, serverTimestamp } from 'firebase/firestore'
 import useCollectionSubscription from '../hooks/useCollectionSubscription'
 import Modal from '../components/Modal'
 import TicketModal from '../components/TicketModal'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { db } from '../firebase'
+import { createTicket } from '../services/tickets'
 import { t } from '../i18n'
 
 const getPriorityLabel = (priority) => {
@@ -123,7 +124,7 @@ function TicketsPage({ currentUser }) {
     setCreateError('')
   }
 
-  const handleCreateTicket = async () => {
+  const handleCreateTicket = async (attachments = []) => {
     if (!createDescription.trim() || !createAssignee) {
       setCreateError(t('tickets.create.requiredError'))
       return
@@ -132,7 +133,7 @@ function TicketsPage({ currentUser }) {
     try {
       setCreateSaving(true)
       setCreateError('')
-      await addDoc(collection(db, 'tickets'), {
+      await createTicket({
         clientId: '',
         clientName: createClientName.trim() || t('tickets.unknownClient'),
         description: createDescription.trim(),
@@ -146,7 +147,7 @@ function TicketsPage({ currentUser }) {
         updatedAt: serverTimestamp(),
         updatedBy: currentUser || 'Ismeretlen',
         comments: [],
-      })
+      }, attachments)
       setCreateOpen(false)
       setCreateClientName('')
       setCreateDescription('')

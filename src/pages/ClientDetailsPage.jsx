@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { TbArrowLeft } from 'react-icons/tb'
-import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore'
+import { collection, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore'
 import ClientDetails from '../components/ClientDetails'
 import { useClientsCache } from '../hooks/useClientsCache'
 import { useClientActivities } from '../hooks/useClientActivities'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { db } from '../firebase'
+import { createTicket } from '../services/tickets'
 import { logClientActivity } from '../utils/clientActivity'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
@@ -137,7 +138,7 @@ function ClientDetailsPage() {
     setTicketError('')
   }
 
-  const handleCreateTicket = async () => {
+  const handleCreateTicket = async (attachments = []) => {
     if (!docId || !ticketClient) return
     if (!ticketDescription.trim() || !ticketAssignee) {
       setTicketError(t('tickets.create.requiredError'))
@@ -146,7 +147,7 @@ function ClientDetailsPage() {
     try {
       setTicketSaving(true)
       setTicketError('')
-      const ref = await addDoc(collection(db, 'tickets'), {
+      const ref = await createTicket({
         clientId: docId,
         clientName: ticketClient.nev || 'Ismeretlen ügyfél',
         description: ticketDescription.trim(),
@@ -160,7 +161,7 @@ function ClientDetailsPage() {
         updatedAt: serverTimestamp(),
         updatedBy: actorName || 'Ismeretlen',
         comments: [],
-      })
+      }, attachments)
       await logClientActivity({
         clientId: docId,
         type: 'ticket_created',

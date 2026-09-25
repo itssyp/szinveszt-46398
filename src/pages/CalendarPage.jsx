@@ -8,6 +8,28 @@ import { i18n, t } from '../i18n'
 const pad = (n) => String(n).padStart(2, '0')
 const toIsoDate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 
+function parseDateOnly(value) {
+  if (!value) return null
+  if (value && typeof value === 'object' && typeof value.toDate === 'function') return parseDateOnly(value.toDate())
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate())
+  }
+  const raw = String(value).trim()
+  const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (!match) return null
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getBreakReminderDate(value) {
+  const breakStart = parseDateOnly(value)
+  if (!breakStart) return ''
+  const breakYear = breakStart.getFullYear()
+  breakStart.setDate(breakStart.getDate() + 180)
+  if (breakStart.getFullYear() !== breakYear) return ''
+  return toIsoDate(breakStart)
+}
+
 const priorityRank = { high: 0, medium: 1, low: 2 }
 const priorityLabel = (value) => {
   if (value === 'high') return t('tickets.priorityHigh')
@@ -19,6 +41,7 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
   const { data: tickets, error, loading } = useCollectionSubscription('tickets', (coll) =>
     query(coll, orderBy('createdAt', 'desc'))
   )
+  const { data: clients, error: clientsError, loading: clientsLoading } = useCollectionSubscription('clients')
   const todayIso = useMemo(() => toIsoDate(new Date()), [])
   const [selectedTicket, setSelectedTicket] = useState(null)
 
@@ -56,6 +79,23 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
     return map
   }, [openDueTickets])
 
+  const breakRemindersByDate = useMemo(() => {
+    const map = new Map()
+    clients.forEach((client) => {
+      const breakStartDate = parseDateOnly(client.szunetKezdete)
+      const reminderDate = getBreakReminderDate(client.szunetKezdete)
+      if (!reminderDate) return
+      if (!map.has(reminderDate)) map.set(reminderDate, [])
+      map.get(reminderDate).push({
+        id: `break-${client.id}-${reminderDate}`,
+        client,
+        reminderDate,
+        breakStartDate: toIsoDate(breakStartDate),
+      })
+    })
+    return map
+  }, [clients])
+
   const monthGrid = useMemo(() => {
     const year = viewDate.getFullYear()
     const month = viewDate.getMonth()
@@ -75,14 +115,19 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
         isToday: iso === todayIso,
         isSelected: iso === selectedDate,
         dueCount: (dueByDate.get(iso) || []).length,
+        breakReminderCount: (breakRemindersByDate.get(iso) || []).length,
       })
     }
 
     while (cells.length % 7 !== 0) cells.push(null)
     return cells
-  }, [viewDate, selectedDate, dueByDate, todayIso])
+  }, [viewDate, selectedDate, dueByDate, breakRemindersByDate, todayIso])
 
   const selectedItems = useMemo(() => dueByDate.get(selectedDate) || [], [dueByDate, selectedDate])
+  const selectedBreakReminders = useMemo(
+    () => breakRemindersByDate.get(selectedDate) || [],
+    [breakRemindersByDate, selectedDate]
+  )
   const assigneeOptions = useMemo(() => {
     const names = (userProfiles || [])
       .map((profile) => (profile.username || profile.email || '').trim())
@@ -112,12 +157,12 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
         </div>
       </header>
 
-      {error ? (
+      {error || clientsError ? (
         <div className="banner banner-error">
-          {t('common.errorPrefix')} {error}
+          {t('common.errorPrefix')} {error || clientsError}
         </div>
       ) : null}
-      {loading ? <div className="banner">{t('common.loading')}</div> : null}
+      {loading || clientsLoading ? <div className="banner">{t('common.loading')}</div> : null}
 
       <section className="panel calendar-panel">
         <div className="panel-head">
@@ -162,9 +207,13 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
                 key={cell.iso}
                 className={`calendar-day${cell.isToday ? ' is-today' : ''}${cell.isSelected ? ' is-selected' : ''}`}
                 onClick={() => setSelectedDate(cell.iso)}
+                aria-label={`${cell.iso}${cell.breakReminderCount ? `, ${cell.breakReminderCount} szünet emlékeztető` : ''}${cell.dueCount ? `, ${cell.dueCount} határidős ticket` : ''}`}
               >
                 <span className="calendar-day__num">{cell.day}</span>
-                {cell.dueCount ? <span className="calendar-day__due">{cell.dueCount}</span> : null}
+                <span className="calendar-day__markers">
+                  {cell.breakReminderCount ? <span className="calendar-day__break">{cell.breakReminderCount}</span> : null}
+                  {cell.dueCount ? <span className="calendar-day__due">{cell.dueCount}</span> : null}
+                </span>
               </button>
             )
           })}
@@ -176,13 +225,26 @@ function CalendarPage({ currentUser, userProfiles = [] }) {
           <h2>
             {t('calendar.dueItems')} - {selectedDate}
           </h2>
-          <span className="pill">{selectedItems.length}</span>
+          <span className="pill">{selectedItems.length + selectedBreakReminders.length}</span>
         </div>
 
-        {!selectedItems.length ? (
+        {!selectedItems.length && !selectedBreakReminders.length ? (
           <p className="muted">{t('calendar.noDueItems')}</p>
         ) : (
           <div className="ticket-list">
+            {selectedBreakReminders.map(({ id, client, breakStartDate }) => (
+              <div key={id} className="ticket-row calendar-break-reminder">
+                <div className="ticket-head">
+                  <div className="ticket-client">{client.nev || t('tickets.unknownClient')}</div>
+                  <span className="calendar-break-reminder__label">{t('calendar.breakReminder')}</span>
+                </div>
+                <div className="ticket-desc">{t('calendar.breakReminderText')}</div>
+                <div className="ticket-meta">
+                  {client.adoszam ? <span>{t('calendar.taxPrefix')} {client.adoszam}</span> : null}
+                  <span>{t('calendar.breakStartedPrefix')} {breakStartDate}</span>
+                </div>
+              </div>
+            ))}
             {selectedItems.map((ticket) => (
               <div key={ticket.id} className="ticket-row clickable" onClick={() => setSelectedTicket(ticket)}>
                 <div className="ticket-head">

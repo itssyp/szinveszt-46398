@@ -5,6 +5,7 @@ import Modal from '../../../components/Modal'
 import { db } from '../../../firebase'
 import { mergeMonthlyIncomes } from '../../imports/utils/incomeImport'
 import { logClientActivity } from '../../../utils/clientActivity'
+import { getClientIpaValue } from '../../../utils/clientIpa'
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
@@ -69,7 +70,7 @@ export function GeneralTab({ groups, labels, client, fields, formatValue }) {
         {group.keys.map((key) => (
           <div key={key} className="details-item">
             <span className="details-label">{labels[key] || key}</span>
-            <span className="details-value">{formatValue(key, client[key], fields)}</span>
+            <span className="details-value">{formatValue(key, key === 'ipa' ? getClientIpaValue(client) : client[key], fields)}</span>
           </div>
         ))}
       </div>

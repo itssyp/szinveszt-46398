@@ -1,12 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatClientStartDate, parseClientStartDate } from '../utils/clientDates'
+import { getClientIpaValue } from '../../../utils/clientIpa'
 
 export const defaultViewMode = 'cards'
+const VIEW_MODE_STORAGE_KEY = 'clients-view-mode'
 const DEFAULT_SORT = 'name'
 const SORT_OPTIONS = new Set(['name', 'start-desc', 'start-asc'])
 
 function normalizeViewMode(value) {
-  return value === 'list' ? 'list' : defaultViewMode
+  return value === 'list' || value === 'cards' ? value : defaultViewMode
+}
+
+function readStoredViewMode() {
+  try {
+    return normalizeViewMode(window.localStorage.getItem(VIEW_MODE_STORAGE_KEY))
+  } catch (_error) {
+    return defaultViewMode
+  }
 }
 
 function normalizeSortBy(value) {
@@ -59,7 +69,7 @@ function extractTevekenysegek(value) {
 
 export function useClientFilters(clients = [], options = {}) {
   const initialFilters = options?.initialFilters || {}
-  const initialView = options?.initialView || defaultViewMode
+  const initialView = options?.initialView || ''
 
   const normalizeStatus = (value) =>
     String(value || '')
@@ -76,7 +86,7 @@ export function useClientFilters(clients = [], options = {}) {
   const [startYear, setStartYear] = useState(normalizeText(initialFilters.startYear))
   const [startMonth, setStartMonth] = useState(normalizeMonth(initialFilters.startMonth))
   const [sortBy, setSortBy] = useState(normalizeSortBy(initialFilters.sortBy))
-  const [viewMode, setViewMode] = useState(normalizeViewMode(initialFilters.viewMode || initialView))
+  const [viewMode, setViewMode] = useState(() => normalizeViewMode(initialFilters.viewMode || initialView || readStoredViewMode()))
   const [assigneeFilter, setAssigneeFilter] = useState(normalizeText(initialFilters.assigneeFilter))
   const [languageFilter, setLanguageFilter] = useState(normalizeText(initialFilters.languageFilter))
   const [workTypeFilter, setWorkTypeFilter] = useState(normalizeText(initialFilters.workTypeFilter))
@@ -91,6 +101,14 @@ export function useClientFilters(clients = [], options = {}) {
   const [foodoraFilter, setFoodoraFilter] = useState(normalizeBooleanFilter(initialFilters.foodoraFilter))
   const [woltFilter, setWoltFilter] = useState(normalizeBooleanFilter(initialFilters.woltFilter))
   const [activityFilter, setActivityFilter] = useState(normalizeText(initialFilters.activityFilter))
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode)
+    } catch (_error) {
+      // A blocked localStorage must not affect the client list.
+    }
+  }, [viewMode])
 
   const filteredClients = useMemo(
     () =>
@@ -150,7 +168,7 @@ export function useClientFilters(clients = [], options = {}) {
           if (afaFilter && String(client.afa || '').trim() !== afaFilter) {
             return false
           }
-          if (ipaFilter && String(client.ipa || '').trim() !== ipaFilter) {
+          if (ipaFilter && getClientIpaValue(client) !== ipaFilter) {
             return false
           }
           if (foodoraFilter) {
@@ -266,6 +284,21 @@ export function useClientFilters(clients = [], options = {}) {
     setWoltFilter('')
     setActivityFilter('')
   }
+  const clearAllFilters = () => {
+    setSearchTerm('')
+    setStatusFilter('')
+    setDebtFilter('')
+    setStartYear('')
+    setStartMonth('')
+    clearDetailedFilters()
+  }
+  const applyFilterPreset = (preset) => {
+    clearAllFilters()
+    if (preset === 'active') setStatusFilter('aktív')
+    if (preset === 'paused') setStatusFilter('szünet')
+    if (preset === 'cancelled') setStatusFilter('lemondta/ kirúgva')
+    if (preset === 'debt') setDebtFilter('has')
+  }
   const activeDetailedFilterCount = [
     assigneeFilter,
     languageFilter,
@@ -336,9 +369,11 @@ export function useClientFilters(clients = [], options = {}) {
     availableInvoicingTypes: uniqueOptions((client) => client.szamlazas),
     availableUtalandoFrequencies: uniqueOptions((client) => client.utalandoGyakorisag),
     availableAfaTypes: uniqueOptions((client) => client.afa),
-    availableIpaTypes: uniqueOptions((client) => client.ipa),
+    availableIpaTypes: uniqueOptions((client) => getClientIpaValue(client)),
     availableActivities,
     clearDetailedFilters,
+    clearAllFilters,
+    applyFilterPreset,
     activeDetailedFilterCount,
     formatStartDate,
   }

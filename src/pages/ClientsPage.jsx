@@ -1,8 +1,9 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { addDoc, collection, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
+import { collection, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { TbTrash } from 'react-icons/tb'
 import { db } from '../firebase'
+import { createTicket } from '../services/tickets'
 import ClientCards from '../components/ClientCards'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { useClientsCache } from '../hooks/useClientsCache'
@@ -122,7 +123,8 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     availableAfaTypes,
     availableIpaTypes,
     availableActivities,
-    clearDetailedFilters,
+    clearAllFilters,
+    applyFilterPreset,
     activeDetailedFilterCount,
     formatStartDate,
   } = useClientFilters(clients, { initialFilters: initialFiltersRef.current })
@@ -270,7 +272,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     setTicketDueDate('')
   }
 
-  const handleCreateTicket = async () => {
+  const handleCreateTicket = async (attachments = []) => {
     if (!ticketClient || !ticketDescription.trim() || !ticketAssignee) {
       setTicketError(t('tickets.create.requiredError'))
       return
@@ -278,7 +280,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
     try {
       setTicketSaving(true)
       setTicketError('')
-      const ref = await addDoc(collection(db, 'tickets'), {
+      const ref = await createTicket({
         clientId: ticketClient.id,
         clientName: ticketClient.nev || 'Ismeretlen ügyfél',
         description: ticketDescription.trim(),
@@ -292,7 +294,7 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
         updatedAt: serverTimestamp(),
         updatedBy: currentUser || 'Ismeretlen',
         comments: [],
-      })
+      }, attachments)
       await logClientActivity({
         clientId: ticketClient.id,
         type: 'ticket_created',
@@ -398,7 +400,8 @@ function ClientsPage({ currentUser, userProfiles = [] }) {
         onFoodoraChange={setFoodoraFilter}
         onWoltChange={setWoltFilter}
         onActivityChange={setActivityFilter}
-        onClearDetailedFilters={clearDetailedFilters}
+        onClearAllFilters={clearAllFilters}
+        onApplyPreset={applyFilterPreset}
         onToggleView={toggleViewMode}
       />
 

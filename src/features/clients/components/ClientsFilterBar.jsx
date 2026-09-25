@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { TbLayoutGrid, TbList } from 'react-icons/tb'
+import React, { useEffect, useMemo, useState } from 'react'
+import { TbLayoutGrid, TbList, TbX } from 'react-icons/tb'
 import { defaultViewMode } from '../hooks/useClientFilters'
 import { t } from '../../../i18n'
 
@@ -56,14 +56,93 @@ function ClientsFilterBar({
   onFoodoraChange,
   onWoltChange,
   onActivityChange,
-  onClearDetailedFilters,
+  onClearAllFilters,
+  onApplyPreset,
   onToggleView,
 }) {
   const [showDetailed, setShowDetailed] = useState(false)
+  const activeFilters = useMemo(() => {
+    const filters = []
+    const add = (key, label, value, onRemove) => {
+      if (value) filters.push({ key, label, value, onRemove })
+    }
+
+    add('search', 'Keresés', searchTerm, () => onSearchChange(''))
+    add('status', t('clients.filters.status'), statusFilter, () => onStatusChange(''))
+    add('debt', t('clients.filters.debt'), debtFilter ? (debtFilter === 'has' ? t('clients.filters.debtHas') : t('clients.filters.debtNone')) : '', () => onDebtChange(''))
+    add('startYear', t('clients.filters.startYear'), startYear, () => onYearChange(''))
+    add('startMonth', t('clients.filters.startMonth'), startMonth, () => onMonthChange(''))
+    add('assignee', 'Hozzárendelt személy', assigneeFilter, () => onAssigneeChange(''))
+    add('language', 'Nyelv', languageFilter, () => onLanguageChange(''))
+    add('workType', 'Munkavégzés jellege', workTypeFilter, () => onWorkTypeChange(''))
+    add('taxation', 'Adózási forma', taxationFilter, () => onTaxationChange(''))
+    add('billingCompany', 'Cég számlázás', billingCompanyFilter, () => onBillingCompanyChange(''))
+    add('invoicing', 'Számlázás típusa', invoicingFilter, () => onInvoicingChange(''))
+    add('utalandoFrequency', 'Utalandó gyakoriság', utalandoFrequencyFilter, () => onUtalandoFrequencyChange(''))
+    add('afa', 'AFA', afaFilter, () => onAfaChange(''))
+    add('ipa', 'IPA', ipaFilter, () => onIpaChange(''))
+    add('foodora', 'Foodora', foodoraFilter ? (foodoraFilter === 'yes' ? t('common.yes') : t('common.no')) : '', () => onFoodoraChange(''))
+    add('wolt', 'WOLT', woltFilter ? (woltFilter === 'yes' ? t('common.yes') : t('common.no')) : '', () => onWoltChange(''))
+    add('activity', 'Tevékenység', activityFilter, () => onActivityChange(''))
+    return filters
+  }, [
+    activityFilter,
+    afaFilter,
+    assigneeFilter,
+    billingCompanyFilter,
+    debtFilter,
+    foodoraFilter,
+    invoicingFilter,
+    ipaFilter,
+    languageFilter,
+    onAfaChange,
+    onActivityChange,
+    onAssigneeChange,
+    onBillingCompanyChange,
+    onDebtChange,
+    onFoodoraChange,
+    onInvoicingChange,
+    onIpaChange,
+    onLanguageChange,
+    onMonthChange,
+    onSearchChange,
+    onStatusChange,
+    onTaxationChange,
+    onUtalandoFrequencyChange,
+    onWoltChange,
+    onWorkTypeChange,
+    searchTerm,
+    startMonth,
+    startYear,
+    statusFilter,
+    taxationFilter,
+    utalandoFrequencyFilter,
+    woltFilter,
+    workTypeFilter,
+  ])
+
+  useEffect(() => {
+    if (activeDetailedFilterCount) setShowDetailed(true)
+  }, [activeDetailedFilterCount])
 
   return (
     <>
       <div className="panel filter-panel">
+        <div className="filter-presets" aria-label="Gyors szűrők">
+          <span className="filter-presets__label">Gyors nézetek</span>
+          <button type="button" className="filter-preset" onClick={() => onApplyPreset('active')}>
+            Aktív ügyfelek
+          </button>
+          <button type="button" className="filter-preset" onClick={() => onApplyPreset('paused')}>
+            Szünetelő ügyfelek
+          </button>
+          <button type="button" className="filter-preset" onClick={() => onApplyPreset('cancelled')}>
+            Lemondta / kirúgva
+          </button>
+          <button type="button" className="filter-preset" onClick={() => onApplyPreset('debt')}>
+            Tartozással
+          </button>
+        </div>
         <div className="input-shell search-field wide-search">
           <input
             type="search"
@@ -137,15 +216,30 @@ function ClientsFilterBar({
           <button type="button" className="btn ghost" onClick={() => setShowDetailed((prev) => !prev)}>
             {showDetailed ? 'Kevesebb szűrő' : 'További szűrők'}
           </button>
-          {activeDetailedFilterCount ? (
-            <>
-              <span className="pill">{activeDetailedFilterCount} aktív</span>
-              <button type="button" className="btn ghost" onClick={onClearDetailedFilters}>
-                Részletes szűrők törlése
-              </button>
-            </>
-          ) : null}
         </div>
+
+        {activeFilters.length ? (
+          <div className="active-filter-bar">
+            <span className="active-filter-bar__label">Aktív szűrők</span>
+            <div className="active-filter-bar__chips">
+              {activeFilters.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className="pill pill-clear active-filter-chip"
+                  onClick={filter.onRemove}
+                  title={`${filter.label}: ${filter.value} törlése`}
+                >
+                  <span>{filter.label}: {filter.value}</span>
+                  <TbX aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+            <button type="button" className="filter-clear-all" onClick={onClearAllFilters}>
+              Összes szűrő törlése
+            </button>
+          </div>
+        ) : null}
 
         {showDetailed ? (
           <div className="filter-bar clients-detailed-grid">

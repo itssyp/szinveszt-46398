@@ -1,7 +1,8 @@
-import React from 'react'
-import { TbSend, TbX } from 'react-icons/tb'
+import React, { useState } from 'react'
+import { TbPaperclip, TbSend, TbX } from 'react-icons/tb'
 import Modal from './Modal'
 import { t } from '../i18n'
+import { validateTicketAttachmentFiles } from '../utils/ticketAttachments'
 
 function TicketCreateModal({
   client,
@@ -23,9 +24,29 @@ function TicketCreateModal({
   onCancel,
   onSubmit,
 }) {
+  const [selectedFiles, setSelectedFiles] = useState([])
+  const [fileError, setFileError] = useState('')
   const options = Array.from(new Set([currentUser, ...assigneeOptions].filter(Boolean)))
   const resolvedClientName = allowClientEdit ? clientName : client?.nev || t('tickets.unknownClient')
   const titleClientName = resolvedClientName || t('tickets.unknownClient')
+
+  const handleFileChange = (event) => {
+    const nextFiles = Array.from(event.target.files || [])
+    try {
+      const nextSelection = [...selectedFiles, ...nextFiles]
+      validateTicketAttachmentFiles(nextSelection)
+      setSelectedFiles(nextSelection)
+      setFileError('')
+    } catch (uploadError) {
+      setFileError(uploadError.message || t('tickets.create.attachmentError'))
+    }
+    event.target.value = ''
+  }
+
+  const removeFile = (index) => {
+    setSelectedFiles((files) => files.filter((_, fileIndex) => fileIndex !== index))
+    setFileError('')
+  }
 
   return (
     <Modal title={t('tickets.create.title', { clientName: titleClientName })} onClose={onCancel}>
@@ -76,9 +97,37 @@ function TicketCreateModal({
                 onChange={(event) => onChangeDescription(event.target.value)}
               />
             </div>
+            <div className="form-field">
+              <span>{t('tickets.create.attachments')}</span>
+              <label className="btn ghost ticket-attachment-picker">
+                <TbPaperclip />
+                {t('tickets.create.chooseAttachments')}
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleFileChange}
+                  disabled={saving}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              {fileError ? <span className="form-error">{fileError}</span> : null}
+              {selectedFiles.length ? (
+                <div className="ticket-attachment-list">
+                  {selectedFiles.map((file, index) => (
+                    <div className="ticket-attachment-item" key={`${file.name}-${index}`}>
+                      <span title={file.name}>{file.name}</span>
+                      <button type="button" className="btn ghost" onClick={() => removeFile(index)} disabled={saving}>
+                        <TbX aria-hidden="true" />
+                        <span className="sr-only">{t('tickets.create.removeAttachment')}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="form-actions">
-            <button className="btn" type="button" disabled={saving} onClick={onSubmit}>
+            <button className="btn" type="button" disabled={saving} onClick={() => onSubmit(selectedFiles)}>
               <TbSend />
               {saving ? t('tasks.detail.saving') : t('tickets.create.createButton')}
             </button>

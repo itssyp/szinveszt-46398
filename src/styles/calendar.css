@@ -100,7 +100,6 @@
 }
 
 .calendar-day__due {
-  align-self: flex-end;
   min-width: 22px;
   height: 22px;
   border-radius: 999px;
@@ -109,6 +108,35 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.calendar-day__markers {
+  align-self: flex-end;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.calendar-day__break {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.calendar-break-reminder {
+  border-color: #fcd34d;
+}
+
+.calendar-break-reminder__label {
+  color: #92400e;
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -122,5 +150,73 @@
   .calendar-day {
     min-height: 74px;
     padding: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .calendar-panel,
+  .calendar-due-panel {
+    padding: 14px;
+  }
+
+  .calendar-month-nav {
+    gap: 8px;
+  }
+
+  .calendar-month-title {
+    min-width: 0;
+    font-size: 1.1rem;
+  }
+
+  .calendar-month-arrow {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 3px;
+  }
+
+  .calendar-weekdays {
+    margin-bottom: 3px;
+  }
+
+  .calendar-weekday {
+    overflow: hidden;
+    font-size: 0.68rem;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .calendar-day {
+    min-height: 54px;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+  }
+
+  .calendar-day__num {
+    font-size: 0.82rem;
+  }
+
+  .calendar-day__markers {
+    gap: 2px;
+  }
+
+  .calendar-day__due,
+  .calendar-day__break {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    font-size: 0.62rem;
+  }
+
+  .calendar-due-panel .panel-head {
+    align-items: flex-start;
+  }
+
+  .calendar-due-panel .panel-head h2 {
+    font-size: 1.05rem;
   }
 }

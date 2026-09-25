@@ -161,7 +161,7 @@ export function applyMapping(rows, mapping, columns, { headerRowIndex = 0 } = {}
       out.monthlyIncomes = incomes
     }
 
-    const entry = { rowNumber: i + 1, data: out, errors }
+    const entry = { rowNumber: i + 1, data: out, errors, source: row }
     normalizedRows.push(entry)
     if (errors.length) invalidRows.push(entry)
     else validRows.push(entry)

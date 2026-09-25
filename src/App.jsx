@@ -62,7 +62,6 @@ function AppShell() {
     profiles,
   } = useUserProfile()
   const location = useLocation()
-  const [clientMenuOpen, setClientMenuOpen] = useState(false)
   const [tasksMenuOpen, setTasksMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [seenNotificationKeys, setSeenNotificationKeys] = useState({})
@@ -161,7 +160,6 @@ function AppShell() {
   )
 
   useEffect(() => {
-    setClientMenuOpen(false)
     setTasksMenuOpen(false)
   }, [location.pathname])
 
@@ -258,62 +256,9 @@ function AppShell() {
           <span>SZINVESZT</span>
         </div>
         <div className="nav-links">
-          <div
-            className={`nav-dropdown${clientsSectionActive ? ' active' : ''}`}
-            onMouseLeave={() => setClientMenuOpen(false)}
-          >
-            <button
-              className={`nav-link nav-dropdown__toggle${clientsSectionActive ? ' active' : ''}`}
-              type="button"
-              onClick={() => setClientMenuOpen((v) => !v)}
-            >
-              {t('app.nav.clients')}
-            </button>
-            <div className={`nav-dropdown__menu${clientMenuOpen ? ' is-open' : ''}`}>
-              <NavLink
-                to="/clients"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setClientMenuOpen(false)}
-              >
-                {t('app.nav.clientsList')}
-              </NavLink>
-              <NavLink
-                to="/clients/new"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setClientMenuOpen(false)}
-              >
-                {t('app.nav.newClient')}
-              </NavLink>
-              <NavLink
-                to="/clients/import"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setClientMenuOpen(false)}
-              >
-                {t('app.nav.excelImport')}
-              </NavLink>
-              <NavLink
-                to="/clients/income-import"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setClientMenuOpen(false)}
-              >
-                {t('app.nav.incomesImport')}
-              </NavLink>
-              <NavLink
-                to="/client-schema"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setClientMenuOpen(false)}
-              >
-                {t('app.nav.schemaEditor')}
-              </NavLink>
-              <NavLink
-                to="/clients/export"
-                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                onClick={() => setClientMenuOpen(false)}
-              >
-                {t('app.nav.excelExport')}
-              </NavLink>
-            </div>
-          </div>
+          <NavLink to="/clients" className={() => `nav-link${clientsSectionActive ? ' active' : ''}`}>
+            {t('app.nav.clients')}
+          </NavLink>
           {/* Bevallások tab temporarily hidden */}
           <NavLink
             to="/tickets"

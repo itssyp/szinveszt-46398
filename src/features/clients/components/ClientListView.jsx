@@ -111,9 +111,18 @@ function ClientListView({
             <span className="client-list__name">
               <span className={statusClass(client.statusz)} aria-hidden="true" /> {client.nev || 'N/A'}
             </span>
-            <span className="client-list__tax">{client.adoszam || '-'}</span>
-            <span className="client-list__email">{client.email || '-'}</span>
-            <span className="client-list__date">{formatStartDate(client)}</span>
+            <span className="client-list__tax">
+              <span className="client-list__field-label">Adószám</span>
+              {client.adoszam || '-'}
+            </span>
+            <span className="client-list__email">
+              <span className="client-list__field-label">E-mail</span>
+              {client.email || '-'}
+            </span>
+            <span className="client-list__date">
+              <span className="client-list__field-label">Kezdés</span>
+              {formatStartDate(client)}
+            </span>
           </div>
         )
       })}

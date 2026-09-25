@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
+import { getStorage, connectStorageEmulator } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -36,6 +37,7 @@ export function createFirebaseApp() {
 
 export const firebaseApp = createFirebaseApp()
 export const db = getFirestore(firebaseApp)
+export const storage = getStorage(firebaseApp)
 // Use the deployed region to avoid defaulting to us-central1.
 export const functions = getFunctions(firebaseApp, 'europe-west3')
 
@@ -56,6 +58,15 @@ if (import.meta.env.DEV) {
     connectFunctionsEmulator(functions, fnHost, fnPort)
     // eslint-disable-next-line no-console
     console.info(`Functions emulator connected at ${fnHost}:${fnPort}`)
+  } catch (_e) {
+    // ignore emulator connection errors to avoid breaking prod builds
+  }
+
+  try {
+    const storagePort = Number(import.meta.env.VITE_STORAGE_EMULATOR_PORT || 9199)
+    connectStorageEmulator(storage, host, storagePort)
+    // eslint-disable-next-line no-console
+    console.info(`Storage emulator connected at ${host}:${storagePort}`)
   } catch (_e) {
     // ignore emulator connection errors to avoid breaking prod builds
   }

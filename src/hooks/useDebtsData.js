@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getDocumentPayments, listDocumentsByStatus, getBillingoStatuses } from '../services/billingoClient'
+import { getDocument, getDocumentPayments, listDocumentsByStatus, getBillingoStatuses } from '../services/billingoClient'
 import { addToDebtMap, extractPartnerFromDoc, formatAmount, toNumber } from '../utils/debtMapping'
 import { persistDebtsToClients } from '../services/debtPersistence'
 
 // Debug knobs (kept exportable for quick tuning)
 export const DEBUG_LIMIT_PARTNERS = null // set null to show all partners
 export const DEBUG_LIMIT_DOCS_PER_STATUS = null // cap downloaded docs per status in dev; null = no cap
-export const CONCURRENCY_PAYMENTS = 6 // payment history calls for partially_paid docs
+export const CONCURRENCY_PAYMENTS = 2 // keep Billingo detail/payment fetches under rate limits
+const DEBT_EXCLUDED_DOCUMENT_MARKERS = ['2025eveszaras', '2025szjaszamla']
 
 const STATUSES = getBillingoStatuses()
 
@@ -64,6 +65,99 @@ function getDocumentDueDate(doc) {
   )
 }
 
+function normalizeCommentText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9]+/gi, '')
+    .toLowerCase()
+    .trim()
+}
+
+function getDebtDocumentTextCandidates(doc) {
+  const candidates = []
+  collectCommentLikeStrings(doc, candidates)
+  return candidates
+}
+
+function collectCommentLikeStrings(value, bucket, depth = 0, keyName = '', seen = new Set()) {
+  if (value === null || value === undefined || depth > 5) return
+  if (typeof value === 'string') {
+    if (!keyName || /(comment|note|megjegyzes|name|title|subject|description|megnevezes)/i.test(keyName)) bucket.push(value)
+    return
+  }
+  if (typeof value !== 'object') return
+  if (seen.has(value)) return
+  seen.add(value)
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectCommentLikeStrings(entry, bucket, depth + 1, keyName, seen))
+    return
+  }
+
+  Object.entries(value).forEach(([key, entry]) => {
+    collectCommentLikeStrings(entry, bucket, depth + 1, key, seen)
+  })
+}
+
+function shouldIgnoreDebtDocument(doc) {
+  const candidates = getDebtDocumentTextCandidates(doc)
+  if (!candidates.length) return false
+
+  return candidates.some((entry) => {
+    const normalized = normalizeCommentText(entry)
+    return normalized && DEBT_EXCLUDED_DOCUMENT_MARKERS.some((marker) => normalized.includes(marker))
+  })
+}
+
+function getDebtDocumentExclusionMatch(doc) {
+  const candidates = getDebtDocumentTextCandidates(doc)
+  for (const entry of candidates) {
+    const normalized = normalizeCommentText(entry)
+    const marker = DEBT_EXCLUDED_DOCUMENT_MARKERS.find((value) => normalized && normalized.includes(value))
+    if (marker) {
+      return { marker, entry: String(entry || '').trim() }
+    }
+  }
+  return null
+}
+
+function logDebtDocumentExclusion(doc, source) {
+  const match = getDebtDocumentExclusionMatch(doc)
+  if (!match) return
+
+  const documentId = getDocumentId(doc) || 'unknown'
+  const invoiceNumber = doc?.invoice_number || doc?.invoiceNumber || doc?.number || ''
+  console.info('[billingo][debts] Excluding invoice from debt sync', {
+    source,
+    documentId,
+    invoiceNumber,
+    matchedMarker: match.marker,
+    matchedText: match.entry,
+  })
+}
+
+async function resolveDebtDocument(doc, signal, detailCache) {
+  const documentId = getDocumentId(doc)
+  if (!documentId) return doc
+
+  const cached = detailCache.get(documentId)
+  if (cached) return cached
+
+  const request = (async () => {
+    try {
+      const detailed = await getDocument(documentId, signal)
+      return detailed && typeof detailed === 'object' ? { ...doc, ...detailed } : doc
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err
+      return doc
+    }
+  })()
+
+  detailCache.set(documentId, request)
+  return request
+}
+
 export function useDebtsData({ autoLoad = true } = {}) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -104,6 +198,7 @@ export function useDebtsData({ autoLoad = true } = {}) {
 
     try {
       const docsByStatus = {}
+      const documentDetailCache = new Map()
 
       for (const status of STATUSES) {
         if (runIdRef.current !== myRunId) return
@@ -138,15 +233,20 @@ export function useDebtsData({ autoLoad = true } = {}) {
       for (const status of ['expired']) {
         const docs = docsByStatus[status] || []
         for (const doc of docs) {
-          const paymentStatus = normalizePaymentStatus(doc)
+          const resolvedDoc = await resolveDebtDocument(doc, controller.signal, documentDetailCache)
+          if (shouldIgnoreDebtDocument(resolvedDoc)) {
+            logDebtDocumentExclusion(resolvedDoc, 'expired')
+            continue
+          }
+          const paymentStatus = normalizePaymentStatus(resolvedDoc)
           if (paymentStatus === 'partially_paid') {
-            partialDocsFromAnyStatus.push(doc)
+            partialDocsFromAnyStatus.push(resolvedDoc)
             continue
           }
 
-          const partner = extractPartnerFromDoc(doc)
+          const partner = extractPartnerFromDoc(resolvedDoc)
           if (!partner) continue
-          addToDebtMap(debtMap, partner, doc?.gross_total, 1, getDocumentDueDate(doc))
+          addToDebtMap(debtMap, partner, resolvedDoc?.gross_total, 1, getDocumentDueDate(resolvedDoc))
         }
       }
 
@@ -169,7 +269,17 @@ export function useDebtsData({ autoLoad = true } = {}) {
           if (runIdRef.current !== myRunId) return
 
           const doc = partialDocs[i]
-          const partner = extractPartnerFromDoc(doc)
+          const resolvedDoc = await resolveDebtDocument(doc, controller.signal, documentDetailCache)
+          if (shouldIgnoreDebtDocument(resolvedDoc)) {
+            logDebtDocumentExclusion(resolvedDoc, 'partially_paid')
+            paymentsDoneLocal++
+            if (runIdRef.current === myRunId) {
+              setProgress((p) => ({ ...p, paymentsDone: paymentsDoneLocal }))
+            }
+            continue
+          }
+
+          const partner = extractPartnerFromDoc(resolvedDoc)
           if (!partner) {
             paymentsDoneLocal++
             if (runIdRef.current === myRunId) {
@@ -178,18 +288,21 @@ export function useDebtsData({ autoLoad = true } = {}) {
             continue
           }
 
-          const gross = toNumber(doc?.gross_total)
-          let paidSum = getPaidAmountFallback(doc)
+          const gross = toNumber(resolvedDoc?.gross_total)
+          let paidSum = getPaidAmountFallback(resolvedDoc)
 
           try {
-            const payments = await getDocumentPayments(doc.id, controller.signal)
-            paidSum = payments.reduce((s, pay) => s + toNumber(pay?.price), 0)
+            const paymentDocId = getDocumentId(doc)
+            if (paymentDocId) {
+              const payments = await getDocumentPayments(paymentDocId, controller.signal)
+              paidSum = payments.reduce((s, pay) => s + toNumber(pay?.price), 0)
+            }
           } catch (_e) {
             // Fall back to document-level paid totals if payment history is unavailable.
           }
 
           const remaining = Math.max(0, gross - paidSum)
-          if (remaining > 0) addToDebtMap(debtMap, partner, remaining, 1, getDocumentDueDate(doc))
+          if (remaining > 0) addToDebtMap(debtMap, partner, remaining, 1, getDocumentDueDate(resolvedDoc))
 
           paymentsDoneLocal++
           if (runIdRef.current === myRunId) {

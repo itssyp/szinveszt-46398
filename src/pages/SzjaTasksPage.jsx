@@ -1,21 +1,25 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { TbAlertTriangle, TbFlag } from 'react-icons/tb'
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { TbAlertTriangle, TbChevronDown, TbChevronUp, TbFlag } from 'react-icons/tb'
+import { collection, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import Modal from '../components/Modal'
 import TicketCreateModal from '../components/TicketCreateModal'
 import { statusClass } from '../components/ClientCards'
 import { db } from '../firebase'
+import { createTicket } from '../services/tickets'
 import { useClientsCache } from '../hooks/useClientsCache'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { logClientActivity } from '../utils/clientActivity'
+import { buildClientIpaUpdateFields, getClientIpaValue } from '../utils/clientIpa'
+import { buildUserIdentitySet } from '../utils/userIdentity'
 
 const START_2025 = new Date(2025, 0, 1)
 const START_2025_JAN_2 = new Date(2025, 0, 2)
 const START_2026 = new Date(2026, 0, 1)
 const SZJA_TASK_YEAR = 2025
+const SZJA_FREEZE_DOC_ID = `szja${SZJA_TASK_YEAR}`
 const SZJA_CHECKLIST_FIELDS = [
   { key: 'bevallasElkeszitve', label: 'SZJA elkészítve' },
   { key: 'bevallasBeadva', label: 'SZJA beadva' },
@@ -25,12 +29,24 @@ const SZJA_CHECKLIST_FIELDS = [
   { key: 'hipaErtesitoKikulve', label: 'IPA értesítő' },
 ]
 
+const STEP_FILTER_ANY = ''
+const STEP_FILTER_DONE = 'done'
+const STEP_FILTER_PENDING = 'pending'
+
+function createInitialStepFilters() {
+  return Object.fromEntries(SZJA_CHECKLIST_FIELDS.map(({ key }) => [key, STEP_FILTER_ANY]))
+}
+
 function normalizeStatus(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .replace(/[^a-z]/gi, '')
     .toLowerCase()
+}
+
+function isCancelledStatus(statusNorm) {
+  return statusNorm.startsWith('lemondta') || statusNorm.startsWith('kirugva')
 }
 
 function parseAnyDate(value) {
@@ -75,6 +91,12 @@ function formatDate(value) {
   return value.toLocaleDateString('hu-HU')
 }
 
+function formatTimestamp(value) {
+  const date = value && typeof value.toDate === 'function' ? value.toDate() : value instanceof Date ? value : null
+  if (!date || Number.isNaN(date.getTime())) return ''
+  return `${date.toLocaleDateString('hu-HU')} ${date.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })}`
+}
+
 function sortSzjaItems(items) {
   return items.sort((a, b) => {
     const aPriority = Boolean(a.client?.szja2025?.highPriority)
@@ -94,11 +116,45 @@ function getSzjaException(client) {
   }
 }
 
+function useSzjaFreezeState() {
+  const [freezeState, setFreezeState] = useState({ frozen: false, activeIds: [], pausedOrEndedIds: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const ref = doc(db, 'taskFreezes', SZJA_FREEZE_DOC_ID)
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.exists() ? snap.data() : {}
+        setFreezeState({
+          frozen: Boolean(data.frozen),
+          activeIds: Array.isArray(data.activeIds) ? data.activeIds.filter(Boolean) : [],
+          pausedOrEndedIds: Array.isArray(data.pausedOrEndedIds) ? data.pausedOrEndedIds.filter(Boolean) : [],
+          frozenAt: data.frozenAt || null,
+          frozenBy: data.frozenBy || '',
+        })
+        setError('')
+        setLoading(false)
+      },
+      (err) => {
+        setError(err.message || 'SZJA lista zárolás betöltése sikertelen')
+        setLoading(false)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [])
+
+  return { freezeState, loading, error }
+}
+
 function classifyClientForSzja(client) {
   const statusNorm = normalizeStatus(client.statusz)
   const startDate = parseAnyDate(client.kezdesDatuma)
   const pauseStartDate = parseAnyDate(client.szunetKezdete)
   const endDate = parseAnyDate(client.megszunesDatuma)
+  const cancellationDate = parseAnyDate(client.lemondasDatuma)
   const startedIn2025OrEarlier = Boolean(startDate && startDate < START_2026)
 
   if (!startDate) {
@@ -106,6 +162,7 @@ function classifyClientForSzja(client) {
       startDate,
       pauseStartDate,
       endDate,
+      cancellationDate,
       targetGroup: null,
       exclusionReason: 'Hiányzó vagy érvénytelen kezdési dátum',
     }
@@ -116,28 +173,44 @@ function classifyClientForSzja(client) {
       startDate,
       pauseStartDate,
       endDate,
+      cancellationDate,
       targetGroup: null,
       exclusionReason: 'Kezdés 2026-ban vagy később történt',
     }
   }
 
   if (statusNorm.startsWith('aktiv')) {
-    return { startDate, pauseStartDate, endDate, targetGroup: 'active', exclusionReason: '' }
+    return { startDate, pauseStartDate, endDate, cancellationDate, targetGroup: 'active', exclusionReason: '' }
   }
 
   if (
     (statusNorm.startsWith('szunet') && pauseStartDate && pauseStartDate >= START_2026) ||
     (statusNorm.startsWith('megsz') && endDate && endDate >= START_2026)
   ) {
-    return { startDate, pauseStartDate, endDate, targetGroup: 'active', exclusionReason: '' }
+    return { startDate, pauseStartDate, endDate, cancellationDate, targetGroup: 'active', exclusionReason: '' }
+  }
+
+  if (isCancelledStatus(statusNorm)) {
+    if (cancellationDate && cancellationDate < START_2026) {
+      return {
+        startDate,
+        pauseStartDate,
+        endDate,
+        cancellationDate,
+        targetGroup: null,
+        exclusionReason: '2026 előtt lemondta a könyvelést',
+      }
+    }
+
+    return { startDate, pauseStartDate, endDate, cancellationDate, targetGroup: 'active', exclusionReason: '' }
   }
 
   if (statusNorm.startsWith('szunet') && pauseStartDate && pauseStartDate >= START_2025_JAN_2) {
-    return { startDate, pauseStartDate, endDate, targetGroup: 'pausedOrEnded', exclusionReason: '' }
+    return { startDate, pauseStartDate, endDate, cancellationDate, targetGroup: 'pausedOrEnded', exclusionReason: '' }
   }
 
   if (statusNorm.startsWith('megsz') && endDate && endDate >= START_2025) {
-    return { startDate, pauseStartDate, endDate, targetGroup: 'pausedOrEnded', exclusionReason: '' }
+    return { startDate, pauseStartDate, endDate, cancellationDate, targetGroup: 'pausedOrEnded', exclusionReason: '' }
   }
 
   if (statusNorm.startsWith('szunet')) {
@@ -145,6 +218,7 @@ function classifyClientForSzja(client) {
       startDate,
       pauseStartDate,
       endDate,
+      cancellationDate,
       targetGroup: null,
       exclusionReason: pauseStartDate ? '2025 előtt szünetelt' : 'Hiányzó szünet kezdete',
     }
@@ -155,6 +229,7 @@ function classifyClientForSzja(client) {
       startDate,
       pauseStartDate,
       endDate,
+      cancellationDate,
       targetGroup: null,
       exclusionReason: endDate ? '2025 előtt megszűnt' : 'Hiányzó megszűnés dátuma',
     }
@@ -164,25 +239,51 @@ function classifyClientForSzja(client) {
     startDate,
     pauseStartDate,
     endDate,
+    cancellationDate,
     targetGroup: null,
     exclusionReason: 'A státusz nem illik egyik SZJA-listába sem',
   }
 }
 
-function getVisibleItems(items, searchTerm, assigneeFilter = '', szjaInvoiceFilter = '') {
+function getVisibleItems(
+  items,
+  searchTerm,
+  assigneeFilter = '',
+  szjaInvoiceFilter = '',
+  stepFilters = {},
+  clientStatusFilter = '',
+  ipaFilter = ''
+) {
   const term = String(searchTerm || '').trim().toLowerCase()
   const assigneeTerm = String(assigneeFilter || '').trim().toLowerCase()
   const invoiceFilter = String(szjaInvoiceFilter || '').trim().toLowerCase()
+  const statusFilterTerm = String(clientStatusFilter || '').trim().toLowerCase()
+  const ipaFilterTerm = String(ipaFilter || '').trim().toLowerCase()
+
   return items.filter(({ client }) => {
     const name = String(client.nev || '').toLowerCase()
     const adoszam = String(client.adoszam || '').toLowerCase()
     const assignedTo = String(client.szja2025?.assignedTo || '').trim().toLowerCase()
+    const szja = client.szja2025 || {}
     const szjaInvoicePaid = Boolean(client.szja2025?.szjaSzamlaFizetve)
+    
+    const clientStatus = String(client.statusz || '').trim().toLowerCase()
+    const clientIpa = String(getClientIpaValue(client) || '').trim().toLowerCase()
+
     const matchesAssignee = !assigneeTerm || assignedTo === assigneeTerm
     const matchesSearch = !term || name.includes(term) || adoszam.includes(term)
     const matchesInvoice =
       invoiceFilter === '' ? true : invoiceFilter === 'paid' ? szjaInvoicePaid : !szjaInvoicePaid
-    return matchesAssignee && matchesSearch && matchesInvoice
+    const matchesStatus = !statusFilterTerm || clientStatus === statusFilterTerm
+    const matchesIpa = !ipaFilterTerm || clientIpa === ipaFilterTerm
+
+    const matchesSteps = SZJA_CHECKLIST_FIELDS.every(({ key }) => {
+      const filterValue = String(stepFilters?.[key] || STEP_FILTER_ANY)
+      if (filterValue === STEP_FILTER_ANY) return true
+      const isDone = Boolean(szja[key])
+      return filterValue === STEP_FILTER_DONE ? isDone : !isDone
+    })
+    return matchesAssignee && matchesSearch && matchesInvoice && matchesStatus && matchesIpa && matchesSteps
   })
 }
 
@@ -201,10 +302,6 @@ function getProgressSummary(items) {
   return { total, done, percent }
 }
 
-function getDisplayIpa(client) {
-  return client.ipa || client.szja2025?.hipaValasztas || ''
-}
-
 function getAssigneeAccentClass(value) {
   const slug = String(value || '')
     .trim()
@@ -215,6 +312,24 @@ function getAssigneeAccentClass(value) {
     .toLowerCase()
 
   return slug ? `assignee-${slug}` : ''
+}
+
+function buildSzjaItem(client, overrides = {}) {
+  const classification = classifyClientForSzja(client)
+  return {
+    client,
+    startDate: classification.startDate,
+    pauseStartDate: classification.pauseStartDate,
+    endDate: classification.endDate,
+    cancellationDate: classification.cancellationDate,
+    exclusionReason: classification.exclusionReason,
+    isException: false,
+    ...overrides,
+  }
+}
+
+function buildFrozenSzjaItems(ids, clientsById) {
+  return ids.map((id) => clientsById.get(id)).filter(Boolean).map((client) => buildSzjaItem(client, { isFrozen: true, exclusionReason: '' }))
 }
 
 const toggleSzjaValue = async (clientId, field, value) => {
@@ -232,10 +347,7 @@ const toggleSzjaValue = async (clientId, field, value) => {
 const updateIpaValue = async (clientId, value) => {
   try {
     const ref = doc(db, 'clients', clientId)
-    await updateDoc(ref, {
-      ipa: value,
-      'szja2025.hipaValasztas': value,
-    })
+    await updateDoc(ref, buildClientIpaUpdateFields(value))
   } catch (err) {
     console.error('Error updating IPA value', err)
     alert('Hiba történt a mentés során.')
@@ -373,7 +485,7 @@ function SzjaClientCard({
   const progress = getStepSummary(szja)
   const notePreview = String(szja.megjegyzes || '').trim()
   const assigneeLabel = szja.assignedTo || 'Nincs kiosztva'
-  const ipaLabel = getDisplayIpa(client) || 'Nincs megadva'
+  const ipaLabel = getClientIpaValue(client) || 'Nincs megadva'
   const isHighPriority = Boolean(szja.highPriority)
   const assigneeAccentClass = getAssigneeAccentClass(szja.assignedTo)
   const pressTimerRef = useRef(null)
@@ -486,7 +598,7 @@ function SzjaDetailContent({ item, ipaField, assigneeOptions, onOpenTaskTicket }
     )
   }
 
-  const { client, startDate, pauseStartDate, endDate, isException, exclusionReason } = item
+  const { client, startDate, pauseStartDate, endDate, cancellationDate, isException, exclusionReason } = item
   const szja = client.szja2025 || {}
   const progress = getStepSummary(szja)
   const isHighPriority = Boolean(szja.highPriority)
@@ -514,6 +626,7 @@ function SzjaDetailContent({ item, ipaField, assigneeOptions, onOpenTaskTicket }
               <span>Kezdés: {formatDate(startDate)}</span>
               {pauseStartDate ? <span>Szünet: {formatDate(pauseStartDate)}</span> : null}
               {endDate ? <span>Megszűnés: {formatDate(endDate)}</span> : null}
+              {cancellationDate ? <span>Lemondás: {formatDate(cancellationDate)}</span> : null}
             </div>
           </div>
 
@@ -561,12 +674,12 @@ function SzjaDetailContent({ item, ipaField, assigneeOptions, onOpenTaskTicket }
             <span className="meta-value">{client.adoszam || '-'}</span>
           </div>
           <div className="meta-card">
-            <span className="meta-label">IPA</span>
-            <select
-              className="meta-select"
-              value={getDisplayIpa(client)}
-              onChange={(event) => updateIpaValue(client.id, event.target.value)}
-            >
+              <span className="meta-label">IPA</span>
+              <select
+                className="meta-select"
+                value={getClientIpaValue(client)}
+                onChange={(event) => updateIpaValue(client.id, event.target.value)}
+              >
               <option value="">Nincs megadva</option>
               {ipaField.options.map((option) => (
                 <option key={option} value={option}>
@@ -621,6 +734,7 @@ function RuleSection({
   subtitle,
   items,
   visibleItems,
+  ownProgress,
   selectedItem,
   headerAction = null,
   controls = null,
@@ -659,15 +773,48 @@ function RuleSection({
       <p className="muted" style={{ marginBottom: 20 }}>{subtitle}</p>
 
       {items.length ? (
-        <div className="utalando-progress" style={{ marginBottom: 16 }}>
-          <div className="utalando-progress__row">
-            <span>SZJA beadva: {progress.done}/{progress.total}</span>
-            <span>{progress.percent}%</span>
+        <>
+          <div className="utalando-progress" style={{ marginBottom: 16 }}>
+            <div className="utalando-progress__row">
+              <span>SZJA beadva: {progress.done}/{progress.total}</span>
+              <span>{progress.percent}%</span>
+            </div>
+            <div className="utalando-progress__bar">
+              <div className="utalando-progress__fill" style={{ width: `${progress.percent}%` }} />
+            </div>
           </div>
-          <div className="utalando-progress__bar">
-            <div className="utalando-progress__fill" style={{ width: `${progress.percent}%` }} />
-          </div>
-        </div>
+
+          {ownProgress ? (
+            <div className="utalando-assignee-progress">
+              <div className="utalando-assignee-progress__head">
+                <span className="utalando-progress__eyebrow">Saját előrehaladás</span>
+              </div>
+              <div className="utalando-progress-grid utalando-progress-grid--assignees">
+                <div
+                  className="utalando-progress utalando-progress--assignee"
+                  style={ownProgress.accent ? { '--accent': ownProgress.accent } : undefined}
+                >
+                  <div className="utalando-progress__row">
+                    <div className="utalando-progress__copy utalando-progress__copy--stack">
+                      <span className="utalando-progress__eyebrow">{ownProgress.name}</span>
+                      <span className="utalando-progress__metric">SZJA beadva</span>
+                    </div>
+                    <span className="utalando-progress__percent">{ownProgress.percent}%</span>
+                  </div>
+                  <div className="utalando-progress__bar">
+                    <div className="utalando-progress__fill" style={{ width: `${ownProgress.percent}%` }} />
+                  </div>
+                  <div className="utalando-progress__meta">
+                    <span>
+                      {ownProgress.done}/{ownProgress.total}
+                    </span>
+                    <span>kiosztott ügyfél</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {controls}
@@ -892,6 +1039,7 @@ function handleExportExcel(items, tabTitle) {
     'Kezdés',
     'Szünet kezdete',
     'Megszűnés',
+    'Lemondás',
     'SZJA Elkészítve',
     'SZJA Beadva',
     'SZJA Értesítő kiküldve',
@@ -905,7 +1053,7 @@ function handleExportExcel(items, tabTitle) {
     'Megjegyzés',
   ]
 
-  const rows = items.map(({ client, startDate, pauseStartDate, endDate, isException }) => {
+  const rows = items.map(({ client, startDate, pauseStartDate, endDate, cancellationDate, isException }) => {
     const szja = client.szja2025 || {}
     return [
       client.nev || '',
@@ -914,13 +1062,14 @@ function handleExportExcel(items, tabTitle) {
       formatDate(startDate),
       formatDate(pauseStartDate),
       formatDate(endDate),
+      formatDate(cancellationDate),
       szja.bevallasElkeszitve ? 'Igen' : 'Nem',
       szja.bevallasBeadva ? 'Igen' : 'Nem',
       szja.szjaErtesitoKikulve ? 'Igen' : 'Nem',
       szja.szjaSzamlaFizetve ? 'Igen' : 'Nem',
       szja.hipaBeadva ? 'Igen' : 'Nem',
       szja.hipaErtesitoKikulve ? 'Igen' : 'Nem',
-      getDisplayIpa(client),
+      getClientIpaValue(client),
       szja.assignedTo || '',
       szja.highPriority ? 'Igen' : '',
       isException ? 'Igen' : '',
@@ -945,6 +1094,10 @@ function SzjaTasksPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [szjaInvoiceFilter, setSzjaInvoiceFilter] = useState('')
+  const [clientStatusFilter, setClientStatusFilter] = useState('')
+  const [ipaFilter, setIpaFilter] = useState('')
+  const [stepFilters, setStepFilters] = useState(() => createInitialStepFilters())
+  const [detailedFiltersOpen, setDetailedFiltersOpen] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState('')
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [selectionMode, setSelectionMode] = useState(false)
@@ -962,11 +1115,18 @@ function SzjaTasksPage() {
   const [ticketDueDate, setTicketDueDate] = useState('')
   const [ticketSaving, setTicketSaving] = useState(false)
   const [ticketError, setTicketError] = useState('')
+  const [freezeSaving, setFreezeSaving] = useState(false)
+  const { freezeState, loading: freezeLoading, error: freezeError } = useSzjaFreezeState()
 
   const ipaField = useMemo(
     () => fields.find((field) => field.key === 'ipa') || { label: 'IPA', options: [] },
     [fields]
   )
+
+  const statusOptions = useMemo(() => {
+    const statuses = clients.map((client) => String(client.statusz || '').trim()).filter(Boolean)
+    return Array.from(new Set(statuses)).sort((a, b) => a.localeCompare(b, 'hu'))
+  }, [clients])
 
   const assigneeOptions = useMemo(() => {
     const profileNames = (profiles || [])
@@ -984,8 +1144,9 @@ function SzjaTasksPage() {
     if (user?.email) return user.email.split('@')[0]
     return 'Ismeretlen'
   }, [profile, user])
+  const userIdentitySet = useMemo(() => buildUserIdentitySet(user, profile), [user, profile])
 
-  const groups = useMemo(() => {
+  const dynamicGroups = useMemo(() => {
     const activeStartedBy2025 = []
     const pausedOrTerminated = []
     const excludedClients = []
@@ -993,14 +1154,9 @@ function SzjaTasksPage() {
     clients.forEach((client) => {
       const classification = classifyClientForSzja(client)
       const exception = getSzjaException(client)
-      const baseItem = {
-        client,
-        startDate: classification.startDate,
-        pauseStartDate: classification.pauseStartDate,
-        endDate: classification.endDate,
+      const baseItem = buildSzjaItem(client, {
         exclusionReason: classification.exclusionReason,
-        isException: false,
-      }
+      })
 
       if (classification.targetGroup === 'active') {
         activeStartedBy2025.push(baseItem)
@@ -1036,6 +1192,21 @@ function SzjaTasksPage() {
     }
   }, [clients])
 
+  const groups = useMemo(() => {
+    if (!freezeState.frozen) return dynamicGroups
+
+    const clientsById = new Map(clients.map((client) => [client.id, client]))
+    const activeStartedBy2025 = buildFrozenSzjaItems(freezeState.activeIds, clientsById)
+    const pausedOrTerminated = buildFrozenSzjaItems(freezeState.pausedOrEndedIds, clientsById)
+
+    return {
+      activeStartedBy2025,
+      pausedOrTerminated,
+      excludedClients: [],
+      exceptionCount: activeStartedBy2025.filter((item) => item.isException).length + pausedOrTerminated.filter((item) => item.isException).length,
+    }
+  }, [clients, dynamicGroups, freezeState])
+
   const totalMatches = groups.activeStartedBy2025.length + groups.pausedOrTerminated.length
 
   const activeTabConfig =
@@ -1043,9 +1214,11 @@ function SzjaTasksPage() {
       ? {
           id: 'active',
           title: 'Aktív most (vagy 2026-ban szünetelő/megszűnt)',
-          subtitle: 'Kezdés mindenkinél: 2025-ben vagy korábban. Olyanok is itt vannak, akik csak 2026-ban szüneteltették vagy szüntették meg.',
+          subtitle: freezeState.frozen
+            ? 'Fagyasztott lista: a tagság nem változik státusz- vagy dátummódosításoktól.'
+            : 'Kezdés mindenkinél: 2025-ben vagy korábban. Olyanok is itt vannak, akik csak 2026-ban szüneteltették vagy szüntették meg.',
           items: groups.activeStartedBy2025,
-          headerAction: (
+          headerAction: freezeState.frozen ? null : (
             <ExceptionPicker
               open={exceptionPickerOpen}
               onToggleOpen={() => setExceptionPickerOpen((prev) => !prev)}
@@ -1080,9 +1253,11 @@ function SzjaTasksPage() {
       : {
           id: 'pausedOrEnded',
           title: 'Szünetel / Megszűnt',
-          subtitle: 'Közös szabály: kezdés 2025-ben vagy korábban. De szünetelt vagy megszűnt 2025 folyamán.',
+          subtitle: freezeState.frozen
+            ? 'Fagyasztott lista: a tagság nem változik státusz- vagy dátummódosításoktól.'
+            : 'Közös szabály: kezdés 2025-ben vagy korábban. De szünetelt vagy megszűnt 2025 folyamán.',
           items: groups.pausedOrTerminated,
-          headerAction: (
+          headerAction: freezeState.frozen ? null : (
             <ExceptionPicker
               open={exceptionPickerOpen}
               onToggleOpen={() => setExceptionPickerOpen((prev) => !prev)}
@@ -1117,9 +1292,45 @@ function SzjaTasksPage() {
           ),
         }
 
+  const ownProgress = useMemo(() => {
+    if (!userIdentitySet.size) return null
+
+    const ownItems = activeTabConfig.items.filter(({ client }) =>
+      userIdentitySet.has(String(client.szja2025?.assignedTo || '').trim().toLowerCase())
+    )
+    const total = ownItems.length
+    const done = ownItems.filter(({ client }) => Boolean(client.szja2025?.bevallasBeadva)).length
+
+    return {
+      name: actorName,
+      total,
+      done,
+      percent: total ? Math.round((done / total) * 100) : 0,
+      accent: profile?.themeColor || '',
+    }
+  }, [activeTabConfig.items, actorName, profile, userIdentitySet])
+
+  const activeStepFilters = useMemo(
+    () =>
+      SZJA_CHECKLIST_FIELDS.filter(({ key }) => {
+        const value = String(stepFilters[key] || STEP_FILTER_ANY)
+        return value === STEP_FILTER_DONE || value === STEP_FILTER_PENDING
+      }),
+    [stepFilters]
+  )
+
   const visibleItems = useMemo(
-    () => getVisibleItems(activeTabConfig.items, searchTerm, assigneeFilter, szjaInvoiceFilter),
-    [activeTabConfig.items, searchTerm, assigneeFilter, szjaInvoiceFilter]
+    () =>
+      getVisibleItems(
+        activeTabConfig.items,
+        searchTerm,
+        assigneeFilter,
+        szjaInvoiceFilter,
+        stepFilters,
+        clientStatusFilter,
+        ipaFilter
+      ),
+    [activeTabConfig.items, searchTerm, assigneeFilter, szjaInvoiceFilter, stepFilters, clientStatusFilter, ipaFilter]
   )
 
   const assigneeMatchCount = useMemo(() => {
@@ -1129,7 +1340,14 @@ function SzjaTasksPage() {
       ({ client }) => String(client.szja2025?.assignedTo || '').trim().toLowerCase() === filterValue
     ).length
   }, [activeTabConfig.items, assigneeFilter])
-  const hasActiveFilters = Boolean(assigneeFilter || szjaInvoiceFilter || searchTerm.trim())
+  const hasActiveFilters = Boolean(
+    assigneeFilter ||
+      szjaInvoiceFilter ||
+      searchTerm.trim() ||
+      activeStepFilters.length ||
+      clientStatusFilter ||
+      ipaFilter
+  )
   const szjaInvoiceFilterLabel =
     szjaInvoiceFilter === 'paid' ? 'Fizetve' : szjaInvoiceFilter === 'unpaid' ? 'Nincs fizetve' : ''
   const tabsControls = (
@@ -1193,6 +1411,16 @@ function SzjaTasksPage() {
           />
         </label>
 
+        <button
+          type="button"
+          className={`utalando-disclosure-toggle szja-detailed-toggle${detailedFiltersOpen ? ' is-active' : ''}`}
+          onClick={() => setDetailedFiltersOpen((prev) => !prev)}
+          aria-expanded={detailedFiltersOpen}
+        >
+          {detailedFiltersOpen ? <TbChevronUp /> : <TbChevronDown />}
+          Részletes szűrők
+        </button>
+
         {hasActiveFilters ? (
           <button
             type="button"
@@ -1201,6 +1429,9 @@ function SzjaTasksPage() {
               setAssigneeFilter('')
               setSzjaInvoiceFilter('')
               setSearchTerm('')
+              setClientStatusFilter('')
+              setIpaFilter('')
+              setStepFilters(createInitialStepFilters())
             }}
           >
             Szűrők törlése
@@ -1208,11 +1439,77 @@ function SzjaTasksPage() {
         ) : null}
       </div>
 
+      {detailedFiltersOpen ? (
+        <div className="szja-detailed-filters" aria-label="Részletes SZJA szűrők">
+          <label className="szja-toolbar-field szja-detailed-filters__field">
+            <span className="szja-toolbar-label">Ügyfél státusz</span>
+            <select
+              className="input search-field"
+              value={clientStatusFilter}
+              onChange={(event) => setClientStatusFilter(event.target.value)}
+            >
+              <option value="">Mind</option>
+              {statusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="szja-toolbar-field szja-detailed-filters__field">
+            <span className="szja-toolbar-label">IPA</span>
+            <select
+              className="input search-field"
+              value={ipaFilter}
+              onChange={(event) => setIpaFilter(event.target.value)}
+            >
+              <option value="">Mind</option>
+              {ipaField.options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {SZJA_CHECKLIST_FIELDS.map((field) => (
+            <label key={field.key} className="szja-toolbar-field szja-detailed-filters__field">
+              <span className="szja-toolbar-label">{field.label}</span>
+              <select
+                className="input search-field"
+                value={stepFilters[field.key] || STEP_FILTER_ANY}
+                onChange={(event) =>
+                  setStepFilters((prev) => ({
+                    ...prev,
+                    [field.key]: event.target.value,
+                  }))
+                }
+              >
+                <option value={STEP_FILTER_ANY}>Mind</option>
+                <option value={STEP_FILTER_DONE}>Kész</option>
+                <option value={STEP_FILTER_PENDING}>Nincs kész</option>
+              </select>
+            </label>
+          ))}
+        </div>
+      ) : null}
+
       {hasActiveFilters ? (
         <div className="szja-summary-line">
           {assigneeFilter ? <span className="szja-filter-pill">Felelős: {assigneeFilter}</span> : null}
           {szjaInvoiceFilterLabel ? <span className="szja-filter-pill">SZJA számla: {szjaInvoiceFilterLabel}</span> : null}
           {searchTerm.trim() ? <span className="szja-filter-pill">Keresés: {searchTerm.trim()}</span> : null}
+          {clientStatusFilter ? <span className="szja-filter-pill">Státusz: {clientStatusFilter}</span> : null}
+          {ipaFilter ? <span className="szja-filter-pill">IPA: {ipaFilter}</span> : null}
+          {activeStepFilters.map((field) => {
+            const label = stepFilters[field.key] === STEP_FILTER_DONE ? 'Kész' : 'Nincs kész'
+            return (
+              <span key={field.key} className="szja-filter-pill">
+                {field.label}: {label}
+              </span>
+            )
+          })}
           {assigneeFilter ? (
             <span className="szja-filter-meta">{assigneeMatchCount} ügyfél van ehhez a felelőshöz ebben a listában</span>
           ) : null}
@@ -1358,6 +1655,46 @@ function SzjaTasksPage() {
     }
   }
 
+  const handleFreezeCurrentList = async () => {
+    setFreezeSaving(true)
+    try {
+      await setDoc(
+        doc(db, 'taskFreezes', SZJA_FREEZE_DOC_ID),
+        {
+          frozen: true,
+          year: SZJA_TASK_YEAR,
+          activeIds: dynamicGroups.activeStartedBy2025.map(({ client }) => client.id),
+          pausedOrEndedIds: dynamicGroups.pausedOrTerminated.map(({ client }) => client.id),
+          frozenAt: serverTimestamp(),
+          frozenBy: actorName || 'Ismeretlen',
+        },
+        { merge: true }
+      )
+      setExceptionPickerOpen(false)
+      setSelectedExceptionIds([])
+      setExceptionSearchTerm('')
+    } finally {
+      setFreezeSaving(false)
+    }
+  }
+
+  const handleUnfreezeList = async () => {
+    setFreezeSaving(true)
+    try {
+      await setDoc(
+        doc(db, 'taskFreezes', SZJA_FREEZE_DOC_ID),
+        {
+          frozen: false,
+          unfrozenAt: serverTimestamp(),
+          unfrozenBy: actorName || 'Ismeretlen',
+        },
+        { merge: true }
+      )
+    } finally {
+      setFreezeSaving(false)
+    }
+  }
+
   const handleOpenTaskTicket = (client) => {
     if (!client) return
     setTicketClient(client)
@@ -1368,7 +1705,7 @@ function SzjaTasksPage() {
     setTicketError('')
   }
 
-  const handleCreateTaskTicket = async () => {
+  const handleCreateTaskTicket = async (attachments = []) => {
     if (!ticketClient) return
     if (!ticketDescription.trim() || !ticketAssignee) {
       setTicketError('Add meg a leírást és a felelőst.')
@@ -1378,7 +1715,7 @@ function SzjaTasksPage() {
     try {
       setTicketSaving(true)
       setTicketError('')
-      const ref = await addDoc(collection(db, 'tickets'), {
+      const ref = await createTicket({
         clientId: ticketClient.id,
         clientName: ticketClient.nev || 'Ismeretlen ügyfél',
         description: ticketDescription.trim(),
@@ -1396,7 +1733,7 @@ function SzjaTasksPage() {
         updatedAt: serverTimestamp(),
         updatedBy: actorName || 'Ismeretlen',
         comments: [],
-      })
+      }, attachments)
       await logClientActivity({
         clientId: ticketClient.id,
         type: 'ticket_created',
@@ -1422,8 +1759,23 @@ function SzjaTasksPage() {
             <p className="section-subtitle">Státusz követés és export</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span className="pill">{loading ? 'Betöltés...' : `${totalMatches} érintett`}</span>
-            {!loading ? (
+            {freezeState.frozen ? (
+              <span className="pill">
+                Fagyasztva{freezeState.frozenAt ? `: ${formatTimestamp(freezeState.frozenAt)}` : ''}
+              </span>
+            ) : null}
+            <span className="pill">{loading || freezeLoading ? 'Betöltés...' : `${totalMatches} érintett`}</span>
+            {!loading && !freezeLoading ? (
+              <button
+                className="btn ghost"
+                onClick={freezeState.frozen ? handleUnfreezeList : handleFreezeCurrentList}
+                disabled={freezeSaving}
+                style={{ alignSelf: 'center' }}
+              >
+                {freezeSaving ? 'Mentés...' : freezeState.frozen ? 'Lista feloldása' : 'Jelenlegi lista fagyasztása'}
+              </button>
+            ) : null}
+            {!loading && !freezeLoading ? (
               <button
                 className="btn btn-primary"
                 onClick={() => handleExportExcel(activeTabConfig.items, activeTabConfig.title)}
@@ -1437,9 +1789,10 @@ function SzjaTasksPage() {
       </header>
 
       {error ? <div className="banner banner-error">Hiba: {error}</div> : null}
+      {freezeError ? <div className="banner banner-error">Hiba: {freezeError}</div> : null}
 
       <section className="panel tickets-panel" style={{ padding: 24, overflow: 'visible' }}>
-        {loading ? (
+        {loading || freezeLoading ? (
           <p className="muted">Ügyfelek betöltése...</p>
         ) : (
           <>
@@ -1451,6 +1804,7 @@ function SzjaTasksPage() {
               subtitle={activeTabConfig.subtitle}
               items={activeTabConfig.items}
               visibleItems={visibleItems}
+              ownProgress={ownProgress}
               selectedItem={selectedItem}
               headerAction={activeTabConfig.headerAction}
               controls={sectionControls}

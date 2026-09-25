@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Timestamp, arrayUnion, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { TbPaperclip } from 'react-icons/tb'
 import { db } from '../firebase'
 import { logClientActivity } from '../utils/clientActivity'
+import { uploadTicketAttachments, validateTicketAttachmentFiles } from '../utils/ticketAttachments'
 import { t } from '../i18n'
 
 function formatDueLabel(dueDate) {
@@ -38,6 +40,7 @@ function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {
   const [updatingAssignee, setUpdatingAssignee] = useState(false)
   const [updatingPriority, setUpdatingPriority] = useState(false)
   const [updatingDueDate, setUpdatingDueDate] = useState(false)
+  const [uploadingAttachments, setUploadingAttachments] = useState(false)
 
   useEffect(() => {
     setLocalTicket(ticket)
@@ -151,6 +154,33 @@ function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {
     }
   }
 
+  const handleAttachmentChange = async (event) => {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!files.length) return
+
+    try {
+      const existingAttachments = Array.isArray(localTicket.attachments) ? localTicket.attachments : []
+      validateTicketAttachmentFiles([...existingAttachments, ...files])
+      setUploadingAttachments(true)
+      setError('')
+      const uploaded = await uploadTicketAttachments(ticket.id, files)
+      await updateDoc(doc(db, 'tickets', ticket.id), {
+        attachments: arrayUnion(...uploaded),
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser || 'Ismeretlen',
+      })
+      setLocalTicket((prev) => ({
+        ...prev,
+        attachments: [...(Array.isArray(prev.attachments) ? prev.attachments : []), ...uploaded],
+      }))
+    } catch (err) {
+      setError(err.message || t('tickets.modal.uploadAttachmentError'))
+    } finally {
+      setUploadingAttachments(false)
+    }
+  }
+
   const created =
     localTicket.createdAt?.toDate && localTicket.createdAt.toDate().toLocaleString
       ? localTicket.createdAt.toDate().toLocaleString()
@@ -250,6 +280,40 @@ function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {
           ) : null}
         </div>
         <p className="details-value ticket-description">{localTicket.description || t('tickets.noDescription')}</p>
+        <div className="ticket-attachments">
+          <div className="ticket-attachments__header">
+            <h3>{t('tickets.modal.attachments')}</h3>
+            <label className="btn ghost ticket-attachment-picker">
+              <TbPaperclip />
+              {t('tickets.modal.chooseAttachments')}
+              <input
+                type="file"
+                multiple
+                onChange={handleAttachmentChange}
+                disabled={saving || uploadingAttachments}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
+          {localTicket.attachments?.length ? (
+            <div className="ticket-attachment-list">
+              {localTicket.attachments.map((attachment, index) => (
+                <a
+                  className="ticket-attachment-item ticket-attachment-link"
+                  key={`${attachment.storagePath || attachment.url || attachment.name}-${index}`}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span title={attachment.name}>{attachment.name}</span>
+                  <TbPaperclip aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">{t('tickets.modal.noAttachments')}</p>
+          )}
+        </div>
       </div>
 
       <div className="details-section">

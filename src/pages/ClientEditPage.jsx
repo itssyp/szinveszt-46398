@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { useUserProfile } from '../hooks/useUserProfile.jsx'
 import { normalizeTaxId } from '../utils/id'
 import { useClientSchema } from '../hooks/useClientSchema.jsx'
+import { buildClientIpaUpdateFields, getClientIpaValue } from '../utils/clientIpa'
 
 const CLIENT_STATUS_OPTIONS = ['akt\u00edv', 'lemondta/ kir\u00fagva', 'megsz\u0171nt', 'sz\u00fcnet']
 
@@ -68,6 +69,8 @@ const buildFormDataFromClient = (client, fields) =>
       } else {
         if (field.key === 'statusz') {
           acc[field.key] = normalizeClientStatusOption(current)
+        } else if (field.key === 'ipa') {
+          acc[field.key] = getClientIpaValue(client)
         } else {
           acc[field.key] = current ?? ''
         }
@@ -166,7 +169,10 @@ function ClientEditPage() {
     setSaving(true)
     setError('')
     try {
-      await updateDoc(doc(db, 'clients', clientId), formData)
+      await updateDoc(doc(db, 'clients', clientId), {
+        ...formData,
+        ...buildClientIpaUpdateFields(formData.ipa),
+      })
       await logClientActivity({
         clientId,
         type: 'client_updated',

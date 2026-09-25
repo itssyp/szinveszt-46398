@@ -8,17 +8,45 @@ const baseNormalizer = (value) => {
 
 const normalizeEmail = (value) => baseNormalizer(value).toLowerCase()
 const normalizePhone = (value) => baseNormalizer(value).replace(/\s+/g, '').replace(/[^\d+]/g, '')
+const padDatePart = (value) => String(value).padStart(2, '0')
+const formatDateParts = (year, month, day) => {
+  const y = Number(year)
+  const m = Number(month)
+  const d = Number(day)
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return ''
+  if (y < 1900 || m < 1 || m > 12 || d < 1 || d > 31) return ''
+  return `${y}-${padDatePart(m)}-${padDatePart(d)}`
+}
+const formatLocalDateOnly = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
+  return formatDateParts(date.getFullYear(), date.getMonth() + 1, date.getDate())
+}
 const excelSerialToIso = (serial) => {
   if (!Number.isFinite(serial) || serial <= 0) return ''
   const excelEpoch = Date.UTC(1899, 11, 30)
   const millis = excelEpoch + serial * 24 * 60 * 60 * 1000
   const date = new Date(millis)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  return formatDateParts(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate())
+}
+const parseDateOnlyString = (value) => {
+  const text = baseNormalizer(value)
+  if (!text) return ''
+
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/)
+  if (iso) return formatDateParts(iso[1], iso[2], iso[3])
+
+  const dotted = text.match(/^(\d{4})[./](\d{1,2})[./](\d{1,2})\.?$/)
+  if (dotted) return formatDateParts(dotted[1], dotted[2], dotted[3])
+
+  const hu = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})\.?$/)
+  if (hu) return formatDateParts(hu[3], hu[2], hu[1])
+
+  return ''
 }
 const normalizeDate = (value) => {
   if (!value) return ''
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return formatLocalDateOnly(value)
   if (typeof value === 'number') return excelSerialToIso(value)
   const str = baseNormalizer(value)
   if (!str) return ''
@@ -26,8 +54,10 @@ const normalizeDate = (value) => {
     const asNumber = Number(str)
     return excelSerialToIso(asNumber)
   }
+  const dateOnly = parseDateOnlyString(str)
+  if (dateOnly) return dateOnly
   const d = new Date(str)
-  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+  if (!Number.isNaN(d.getTime())) return formatLocalDateOnly(d)
   return ''
 }
 
@@ -66,7 +96,7 @@ const defaultSynonyms = {
   nev: ['name', 'client', 'customer', 'ugyfel', 'ügyfél', 'full name'],
   statusz: ['status', 'állapot', 'statusz'],
   nyelv: ['language', 'nyelv', 'lang'],
-  torzs: ['törzs', 'torzs', 'group', 'segment'],
+  torzs: ['törzs', 'torzs', 'torzsszam', 'client id', 'client number', 'group', 'segment'],
   munkavegzesJellege: ['munkavégzés jellege', 'munkavegzes jellege', 'work type'],
   adoszam: ['adoszam', 'adó szám', 'tax', 'tax number', 'vat', 'vat id'],
   adoazonosito: ['adoazonosito', 'adóazonosító', 'personal tax id', 'tax id'],
@@ -107,14 +137,19 @@ const typeNormalizers = {
   },
 }
 
+const fieldNormalizers = {
+  email: normalizeEmail,
+  telefonszam: normalizePhone,
+}
+
 const typeValidators = {
   email: emailValidator,
   telefonszam: phoneValidator,
 }
 
 export const clientImportSchema = defaultFieldDefinitions.map((field) => {
-  const normalizer = typeNormalizers[field.type] || baseNormalizer
-  const isRequired = field.key === 'adoszam'
+  const normalizer = fieldNormalizers[field.key] || typeNormalizers[field.type] || baseNormalizer
+  const isRequired = field.key === 'torzs'
   const validators = []
   if (isRequired) validators.push(requiredValidator)
   if (field.key in typeValidators) validators.push(typeValidators[field.key])

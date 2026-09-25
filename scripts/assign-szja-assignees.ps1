@@ -111,6 +111,25 @@ function Get-FirestoreDocuments {
   return $documents
 }
 
+function Get-FirestoreDocument {
+  param(
+    [string]$ProjectId,
+    [hashtable]$Headers,
+    [string]$DocumentPath
+  )
+
+  $uri = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$DocumentPath"
+  try {
+    $document = Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers
+    return Convert-FirestoreDocument $document
+  } catch {
+    if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 404) {
+      return $null
+    }
+    throw
+  }
+}
+
 function Invoke-FirestoreCommitWrites {
   param(
     [string]$ProjectId,
@@ -229,6 +248,12 @@ function Get-SzjaException {
   }
 }
 
+function Test-CancelledStatus {
+  param([string]$Status)
+
+  return $Status.StartsWith('lemondta') -or $Status.StartsWith('kirugva')
+}
+
 function Classify-ClientForSzja {
   param($Client)
 
@@ -240,6 +265,7 @@ function Classify-ClientForSzja {
   $startDate = Parse-AnyDate $Client.kezdesDatuma
   $pauseStartDate = Parse-AnyDate $Client.szunetKezdete
   $endDate = Parse-AnyDate $Client.megszunesDatuma
+  $cancellationDate = Parse-AnyDate $Client.lemondasDatuma
   $startedIn2025OrEarlier = ($startDate -ne $null -and $startDate -lt $start2026)
 
   if ($null -eq $startDate) {
@@ -258,6 +284,14 @@ function Classify-ClientForSzja {
     ($status.StartsWith('szunet') -and $pauseStartDate -and $pauseStartDate -ge $start2026) -or
     ($status.StartsWith('megsz') -and $endDate -and $endDate -ge $start2026)
   ) {
+    return @{ targetGroup = 'active' }
+  }
+
+  if (Test-CancelledStatus $status) {
+    if ($cancellationDate -and $cancellationDate -lt $start2026) {
+      return @{ targetGroup = $null }
+    }
+
     return @{ targetGroup = 'active' }
   }
 
@@ -287,16 +321,34 @@ $accessToken = Get-AccessTokenFromAdc -Path $AdcPath
 $headers = @{ Authorization = "Bearer $accessToken" }
 
 $clients = Get-FirestoreDocuments -ProjectId $projectId -Headers $headers -CollectionName 'clients'
+$freeze = Get-FirestoreDocument -ProjectId $projectId -Headers $headers -DocumentPath 'taskFreezes/szja2025'
 $malformedDocId = '.fieldPaths=szja2025.assignedTo'
 $malformedDocExists = @($clients | Where-Object { $_.id -eq $malformedDocId }).Count -gt 0
 
 $szjaClients = @()
-foreach ($client in $clients) {
-  $classification = Classify-ClientForSzja $client
-  $exception = Get-SzjaException $client
+if ($freeze -and $freeze.frozen) {
+  $clientsById = @{}
+  foreach ($client in $clients) {
+    $clientsById[$client.id] = $client
+  }
 
-  if ($classification.targetGroup -or $exception.included) {
-    $szjaClients += ,$client
+  $frozenClientIds = @()
+  if ($freeze.activeIds) { $frozenClientIds += @($freeze.activeIds) }
+  if ($freeze.pausedOrEndedIds) { $frozenClientIds += @($freeze.pausedOrEndedIds) }
+
+  foreach ($clientId in $frozenClientIds) {
+    if ($clientsById.ContainsKey($clientId)) {
+      $szjaClients += ,$clientsById[$clientId]
+    }
+  }
+} else {
+  foreach ($client in $clients) {
+    $classification = Classify-ClientForSzja $client
+    $exception = Get-SzjaException $client
+
+    if ($classification.targetGroup -or $exception.included) {
+      $szjaClients += ,$client
+    }
   }
 }
 
