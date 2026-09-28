@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "lint": "echo \"No lint configured\"",
+    "test": "node --test security.check.cjs",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run serve",

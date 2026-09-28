@@ -3,7 +3,7 @@ import { Timestamp, arrayUnion, deleteDoc, doc, serverTimestamp, updateDoc } fro
 import { TbPaperclip } from 'react-icons/tb'
 import { db } from '../firebase'
 import { logClientActivity } from '../utils/clientActivity'
-import { uploadTicketAttachments, validateTicketAttachmentFiles } from '../utils/ticketAttachments'
+import { downloadTicketAttachment, uploadTicketAttachments, validateTicketAttachmentFiles } from '../utils/ticketAttachments'
 import { t } from '../i18n'
 
 function formatDueLabel(dueDate) {
@@ -181,6 +181,15 @@ function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {
     }
   }
 
+  const handleAttachmentDownload = async (attachment) => {
+    try {
+      setError('')
+      await downloadTicketAttachment(attachment)
+    } catch (err) {
+      setError(err.message || t('tickets.modal.uploadAttachmentError'))
+    }
+  }
+
   const created =
     localTicket.createdAt?.toDate && localTicket.createdAt.toDate().toLocaleString
       ? localTicket.createdAt.toDate().toLocaleString()
@@ -298,16 +307,15 @@ function TicketModal({ ticket, onClose, currentUser, assigneeOptions = [] }) {
           {localTicket.attachments?.length ? (
             <div className="ticket-attachment-list">
               {localTicket.attachments.map((attachment, index) => (
-                <a
+                <button
+                  type="button"
                   className="ticket-attachment-item ticket-attachment-link"
                   key={`${attachment.storagePath || attachment.url || attachment.name}-${index}`}
-                  href={attachment.url}
-                  target="_blank"
-                  rel="noreferrer"
+                  onClick={() => handleAttachmentDownload(attachment)}
                 >
                   <span title={attachment.name}>{attachment.name}</span>
                   <TbPaperclip aria-hidden="true" />
-                </a>
+                </button>
               ))}
             </div>
           ) : (

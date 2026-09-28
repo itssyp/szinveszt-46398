@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host --port 3000",
+    "dev:staging": "vite --host --port 3001 --mode staging",
     "build": "vite build",
+    "build:staging": "vite build --mode staging",
+    "deploy:staging:hosting": "npm run build:staging && firebase deploy --only hosting --project szinveszt-staging",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run --pool=threads --maxWorkers=1 --minWorkers=1",
+    "test:rules": "vitest run tests/securityRules.test.js --pool=threads --maxWorkers=1 --minWorkers=1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "vite": "^7.2.4",
     "vitest": "^2.1.4"
   },

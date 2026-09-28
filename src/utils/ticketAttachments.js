@@ -1,5 +1,7 @@
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage'
-import { storage } from '../firebase'
+import { deleteObject, ref, uploadBytes } from 'firebase/storage'
+import { getAuth } from 'firebase/auth'
+import { firebaseApp, storage } from '../firebase'
+import { functionUrl } from '../config/firebaseTargets'
 
 export const MAX_TICKET_ATTACHMENT_COUNT = 10
 export const MAX_TICKET_ATTACHMENT_SIZE = 25 * 1024 * 1024
@@ -42,13 +44,11 @@ export async function uploadTicketAttachments(ticketId, files) {
       await uploadBytes(storageRef, file, {
         contentType: file.type || 'application/octet-stream',
       })
-      const url = await getDownloadURL(storageRef)
       uploaded.push({
         name: file.name,
         size: file.size,
         contentType: file.type || 'application/octet-stream',
         storagePath,
-        url,
         uploadedAt: new Date().toISOString(),
       })
     }
@@ -57,4 +57,25 @@ export async function uploadTicketAttachments(ticketId, files) {
     await Promise.all(uploaded.map((attachment) => deleteObject(ref(storage, attachment.storagePath)).catch(() => undefined)))
     throw error
   }
+}
+
+export async function downloadTicketAttachment(attachment) {
+  if (!attachment.storagePath?.startsWith('tickets/')) {
+    throw new Error('Attachment path is missing.')
+  }
+  const user = getAuth(firebaseApp).currentUser
+  if (!user) throw new Error('Authentication required.')
+  const url = new URL(functionUrl('ticketAttachmentDownload'))
+  url.searchParams.set('path', attachment.storagePath)
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })
+  if (!response.ok) throw new Error('Attachment download failed.')
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = attachment.name || 'attachment'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
 }

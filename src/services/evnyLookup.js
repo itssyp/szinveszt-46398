@@ -1,14 +1,8 @@
-const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'szinveszt-46398'
-const region = import.meta.env.VITE_FUNCTIONS_REGION || 'europe-west3'
-const functionsEmulatorHost = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || '127.0.0.1:5001'
+import { functionUrl } from '../config/firebaseTargets'
 
 const defaultBase = (() => {
   if (import.meta.env.VITE_EVNY_LOOKUP_URL) return import.meta.env.VITE_EVNY_LOOKUP_URL
-  if (import.meta.env.DEV && functionsEmulatorHost) {
-    const host = functionsEmulatorHost.startsWith('http') ? functionsEmulatorHost : `http://${functionsEmulatorHost}`
-    return `${host}/${projectId}/${region}/evnyLookup`
-  }
-  return `https://${region}-${projectId}.cloudfunctions.net/evnyLookup`
+  return functionUrl('evnyLookup')
 })()
 
 export async function evnyLookup({ type, value, clientId }) {

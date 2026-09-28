@@ -383,6 +383,10 @@ textarea {
 }
 
 .ticket-attachment-link {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
   color: inherit;
   text-decoration: none;
 }

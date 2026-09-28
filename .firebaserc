@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "szinveszt-46398"
+    "default": "szinveszt-staging",
+    "staging": "szinveszt-staging",
+    "production": "szinveszt-46398"
   }
 }

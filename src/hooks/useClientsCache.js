@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { collection, doc, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { useFirebaseEmulators } from '../config/firebaseTargets'
 
 let cachedClients = []
 let cachedError = ''
@@ -10,7 +11,7 @@ const listeners = new Set()
 let seedInFlight = null
 
 const DEV_PERSIST_DUMMY =
-  import.meta.env.DEV && String(import.meta.env.VITE_DEV_PERSIST_DUMMY_DATA || 'true') !== 'false'
+  useFirebaseEmulators && String(import.meta.env.VITE_DEV_PERSIST_DUMMY_DATA || 'true') !== 'false'
 const DEV_CLIENTS_SNAPSHOT_KEY = 'dev.clients.snapshot.v1'
 
 const notify = () => {

@@ -3,9 +3,47 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // DEV ONLY: open access. Replace with real rules before production deploy.
-    match /{document=**} {
-      allow read, write: if true;
+    function isStaff() {
+      return request.auth != null && request.auth.token.staff == true;
+    }
+
+    match /clients/{clientId} {
+      allow read, write: if isStaff();
+      match /{document=**} {
+        allow read, write: if isStaff();
+      }
+    }
+    match /clientActivities/{activityId} {
+      allow read, write: if isStaff();
+    }
+    match /tickets/{ticketId} {
+      allow read, write: if isStaff();
+    }
+    match /users/{userId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'username', 'themeColor', 'createdAt', 'updatedAt']);
+      allow update: if isStaff() && request.auth.uid == userId
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'themeColor', 'updatedAt']);
+    }
+    match /config/{configId} {
+      allow read, write: if isStaff();
+    }
+    match /monthTasks/{monthId} {
+      allow read, write: if isStaff();
+      match /utalando/{clientId} {
+        allow read, write: if isStaff();
+      }
+    }
+    match /taskFreezes/{freezeId} {
+      allow read, write: if isStaff();
+    }
+    match /bevallasJobs/{jobId} {
+      allow read: if isStaff();
     }
   }
 }

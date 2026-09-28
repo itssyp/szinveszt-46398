@@ -3,6 +3,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2/options');
 const { buildBillingoApp, ALLOWED_ORIGINS } = require('./billingoProxy');
 const { buildNavApp } = require('./navProxy');
+const { buildTicketAttachmentApp } = require('./ticketAttachments');
 const { buildEvnyApp } = require('./evnyLookup');
 const { requireFirebaseAuthOrAppCheckFactory } = require('./utils');
 const { generateBevallas58, getBevallasJob } = require('./bevallas/generate58');
@@ -36,6 +37,8 @@ exports.billingoProxy = onRequest({ cors: true }, billingoApp);
 
 const navApp = buildNavApp(requireFirebaseAuthOrAppCheck);
 exports.navProxy = onRequest(navApp); 
+
+exports.ticketAttachmentDownload = onRequest(buildTicketAttachmentApp(requireFirebaseAuthOrAppCheck));
 
 /* =========================
    EVNY PUBLIC LOOKUP (BEST-EFFORT)
@@ -72,4 +75,3 @@ exports.getBevallasJob = onCall(async (request) => {
     throw new HttpsError('internal', err.message || 'Ismeretlen hiba.');
   }
 });
- 

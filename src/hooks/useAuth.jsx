@@ -12,11 +12,23 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const auth = getAuth(firebaseApp)
-    const unsub = onAuthStateChanged(auth, (nextUser) => {
+    let active = true
+    const unsub = onAuthStateChanged(auth, async (nextUser) => {
+      if (nextUser) {
+        try {
+          await nextUser.getIdToken(true)
+        } catch (error) {
+          if (active) setAuthError(error?.message || 'Nem sikerult frissiteni a bejelentkezest.')
+        }
+      }
+      if (!active) return
       setUser(nextUser)
       setAuthReady(true)
     })
-    return () => unsub()
+    return () => {
+      active = false
+      unsub()
+    }
   }, [])
 
   const signIn = async (email, password) => {

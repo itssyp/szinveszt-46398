@@ -2,6 +2,7 @@ import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
 import { getStorage, connectStorageEmulator } from 'firebase/storage'
+import { functionsRegion, useFirebaseEmulators } from './config/firebaseTargets'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -39,9 +40,9 @@ export const firebaseApp = createFirebaseApp()
 export const db = getFirestore(firebaseApp)
 export const storage = getStorage(firebaseApp)
 // Use the deployed region to avoid defaulting to us-central1.
-export const functions = getFunctions(firebaseApp, 'europe-west3')
+export const functions = getFunctions(firebaseApp, functionsRegion)
 
-if (import.meta.env.DEV) {
+if (useFirebaseEmulators) {
   const host = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || '127.0.0.1'
   const port = Number(import.meta.env.VITE_FIRESTORE_EMULATOR_PORT || 8080)
   try {

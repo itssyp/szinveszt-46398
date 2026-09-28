@@ -23,6 +23,7 @@ function sanitizeFileName(name) {
 
 async function generateBevallas58({ period, clientIds, auth }) {
   if (!auth?.uid) throw new HttpsError('unauthenticated', 'Authentication required.')
+  if (auth.token?.staff !== true) throw new HttpsError('permission-denied', 'Staff access required.')
   if (!period) throw new HttpsError('invalid-argument', 'Period is required.')
   if (!Array.isArray(clientIds) || !clientIds.length) {
     throw new HttpsError('invalid-argument', 'At least one clientId is required.')
@@ -196,6 +197,7 @@ async function generateBevallas58({ period, clientIds, auth }) {
 
 async function getBevallasJob({ jobId, auth }) {
   if (!auth?.uid) throw new HttpsError('unauthenticated', 'Authentication required.')
+  if (auth.token?.staff !== true) throw new HttpsError('permission-denied', 'Staff access required.')
   if (!jobId) throw new HttpsError('invalid-argument', 'jobId is required.')
   const snap = await admin.firestore().collection('bevallasJobs').doc(jobId).get()
   if (!snap.exists) throw new HttpsError('not-found', 'Job not found.')

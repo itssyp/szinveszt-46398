@@ -1,5 +1,6 @@
 import { getAuth } from 'firebase/auth'
 import { firebaseApp } from '../firebase'
+import { functionUrl } from '../config/firebaseTargets'
 
 const STATUSES = ['expired', 'partially_paid']
 const PER_PAGE = 100
@@ -9,15 +10,7 @@ const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504])
 const DEFAULT_RETRY_MS = 1200
 
 // Proxy base
-const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'szinveszt-46398'
-const FUNCTIONS_REGION = import.meta.env.VITE_FUNCTIONS_REGION || 'europe-west3'
-const EMULATOR_HOST = import.meta.env.VITE_FUNCTIONS_EMULATOR_HOST || 'http://127.0.0.1:5001'
-
-const defaultFunctionsBase = import.meta.env.DEV
-  ? `${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}/billingoProxy`
-  : `https://${FUNCTIONS_REGION}-${PROJECT_ID}.cloudfunctions.net/billingoProxy`
-
-const API_BASE = (import.meta.env.VITE_BILLINGO_BASE_URL || defaultFunctionsBase).replace(/\/$/, '')
+const API_BASE = (import.meta.env.VITE_BILLINGO_BASE_URL || functionUrl('billingoProxy')).replace(/\/$/, '')
 let requestTurn = Promise.resolve()
 let nextRequestAt = 0
 

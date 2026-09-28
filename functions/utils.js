@@ -4,37 +4,31 @@ if (!admin.apps.length) {
   admin.initializeApp()
 }
 
-function requireFirebaseAuthOrAppCheckFactory() {
-  return async function requireFirebaseAuthOrAppCheck(req, res, next) {
-    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
-    const allowUnauthenticated = isEmulator
-
+function requireFirebaseAuthOrAppCheckFactory({
+  verifyIdToken = (token) => admin.auth().verifyIdToken(token),
+  verifyAppCheckToken = (token) => admin.appCheck().verifyToken(token),
+} = {}) {
+  return async function requireStaffAuth(req, res, next) {
     try {
       const authHeader = req.headers.authorization || ''
       const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
       const appCheckToken = req.headers['x-firebase-appcheck'] || null
 
-      let decodedIdToken = null
-      let decodedAppCheck = null
-
-      if (idToken) {
-        decodedIdToken = await admin.auth().verifyIdToken(idToken)
-      }
-
-      if (appCheckToken) {
-        decodedAppCheck = await admin.appCheck().verifyToken(appCheckToken)
-      }
-
-      if (!decodedIdToken && !decodedAppCheck) {
-        if (allowUnauthenticated) {
-          return next()
-        }
-        res.status(401).json({ error: 'Unauthorized' })
+      if (!idToken) {
+        res.status(401).json({ error: 'Authentication required' })
         return
       }
-
-      req.user = decodedIdToken || null
-      req.appCheck = decodedAppCheck || null
+      const decodedIdToken = await verifyIdToken(idToken)
+      if (decodedIdToken.staff !== true) {
+        res.status(403).json({ error: 'Staff access required' })
+        return
+      }
+      let decodedAppCheck = null
+      if (appCheckToken) {
+        decodedAppCheck = await verifyAppCheckToken(appCheckToken)
+      }
+      req.user = decodedIdToken
+      req.appCheck = decodedAppCheck
       next()
     } catch (err) {
       console.error('Auth/App Check failed:', err.message)

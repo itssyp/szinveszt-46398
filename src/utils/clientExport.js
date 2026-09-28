@@ -1,6 +1,17 @@
 import * as XLSX from 'xlsx'
 import { clientImportSchema } from '../constants/clientImportSchema'
 
+const EXCLUDED_EXPORT_KEYS = new Set([
+  'navOnlineUser',
+  'navOnlinePassword',
+  'navOnlineSignerKey',
+  'navOnlineExchangeKey',
+])
+
+export const clientExportSchema = clientImportSchema.filter(
+  (field) => !EXCLUDED_EXPORT_KEYS.has(field.key)
+)
+
 const formatExportValue = (value) => {
   if (value === null || value === undefined) return ''
   if (value?.toDate && typeof value.toDate === 'function') {
@@ -16,8 +27,8 @@ const formatExportValue = (value) => {
 }
 
 export function exportClientsToExcel(clients) {
-  const headers = clientImportSchema.map((field) => field.label)
-  const keys = clientImportSchema.map((field) => field.key)
+  const headers = clientExportSchema.map((field) => field.label)
+  const keys = clientExportSchema.map((field) => field.key)
   const rows = clients.map((client) => keys.map((key) => formatExportValue(client[key])))
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
   const workbook = XLSX.utils.book_new()
